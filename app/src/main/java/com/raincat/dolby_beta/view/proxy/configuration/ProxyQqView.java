@@ -12,8 +12,8 @@ import com.raincat.dolby_beta.view.BaseDialogInputItem;
  * <pre>
  *     author : Luoxingran
  *     e-mail : szb5845201314@gmail.com
- *     time   : 2021/12/14
- *     desc   : http代理模式
+ *     time   : 2023/07/24
+ *     desc   : QQcookie
  *     version: 1.0
  * </pre>
  */
