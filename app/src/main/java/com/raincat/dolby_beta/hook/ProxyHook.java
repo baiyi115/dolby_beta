@@ -3,6 +3,7 @@ package com.raincat.dolby_beta.hook;
 import android.content.Context;
 import android.os.Bundle;
 
+
 import com.raincat.dolby_beta.helper.ExtraHelper;
 import com.raincat.dolby_beta.helper.ScriptHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
@@ -42,7 +43,6 @@ public class ProxyHook {
     private String fieldSSLSocketFactory;
     private String fieldHttpUrl = "url";
     private String fieldProxy = "proxy";
-
     private final List<String> whiteUrlList = Arrays.asList("song/enhance/player/url", "song/enhance/download/url","/package");
 
     public ProxyHook(Context context, boolean isPlayProcess) {
@@ -107,21 +107,17 @@ public class ProxyHook {
             });
         }
 
-        if (!isPlayProcess)
-            findAndHookMethod("com.netease.cloudmusic.activity.LoadingActivity", context.getClassLoader(), "onCreate", Bundle.class, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "0");
-                    if (SettingHelper.getInstance().getSetting(SettingHelper.proxy_master_key)) {
-                        ScriptHelper.initScript(context, false);
-                        if (SettingHelper.getInstance().getSetting(SettingHelper.proxy_server_key)) {
-                            ScriptHelper.startHttpProxyMode(context);
-                        } else {
-                            ScriptHelper.startScript();
-                        }
-                    }
+        if (!isPlayProcess) {
+            ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "0");
+            if (SettingHelper.getInstance().getSetting(SettingHelper.proxy_master_key)) {
+                ScriptHelper.initScript(context, false);
+                if (SettingHelper.getInstance().getSetting(SettingHelper.proxy_server_key)) {
+                    ScriptHelper.startHttpProxyMode(context);
+                } else {
+                    ScriptHelper.startScript();
                 }
-            });
+            }
+        }
     }
 
     /**
