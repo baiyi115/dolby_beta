@@ -20,12 +20,19 @@ android {
         }
     }
 
+    // CI has no keystore, so only apply the release signing config when the local Gradle props
+    // provide one. Without it the release variant still builds (unsigned) and CI stays green.
+    def hasReleaseSigning = ['KEY_ALIAS', 'KEY_PASSWORD', 'KEYSTORE_FILE', 'KEYSTORE_PASSWORD']
+            .every { props.containsKey(it) }
+
     signingConfigs {
-        release{
-            keyAlias props['KEY_ALIAS']
-            keyPassword props['KEY_PASSWORD']
-            storeFile file(props['KEYSTORE_FILE'])
-            storePassword props['KEYSTORE_PASSWORD']
+        release {
+            if (hasReleaseSigning) {
+                keyAlias props['KEY_ALIAS']
+                keyPassword props['KEY_PASSWORD']
+                storeFile file(props['KEYSTORE_FILE'])
+                storePassword props['KEYSTORE_PASSWORD']
+            }
         }
     }
 
@@ -35,7 +42,7 @@ android {
             shrinkResources false //资源压缩
             minifyEnabled false //混淆
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (hasReleaseSigning) signingConfig signingConfigs.release
         }
     }
 
