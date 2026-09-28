@@ -17,28 +17,13 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/16
- *     desc   : 文件操作帮助
- *     version: 1.0
- * </pre>
- */
-
 public class FileHelper {
-    /**
-     * 删除文件夹以及目录下的文件
-     *
-     * @param filePath 被删除目录的文件路径
-     * @return 目录删除成功返回true，否则返回false
-     */
+
     public static boolean deleteDirectory(String filePath) {
         boolean flag;
         if (filePath == null || filePath.length() == 0)
             return false;
-        //如果filePath不以文件分隔符结尾，自动添加文件分隔符
+
         if (!filePath.endsWith(File.separator)) {
             filePath = filePath + File.separator;
         }
@@ -49,13 +34,13 @@ public class FileHelper {
             }
             flag = true;
             File[] files = dirFile.listFiles();
-            //遍历删除文件夹下的所有文件(包括子目录)
+
             for (File file : files) {
                 if (file.isFile()) {
-                    //删除子文件
+
                     flag = deleteFile(file.getAbsolutePath());
                 } else {
-                    //删除子目录
+
                     flag = deleteDirectory(file.getAbsolutePath());
                 }
                 if (!flag) break;
@@ -64,16 +49,10 @@ public class FileHelper {
         } catch (Exception e) {
             return false;
         }
-        //删除当前空目录
+
         return dirFile.delete();
     }
 
-    /**
-     * 删除单个文件
-     *
-     * @param filePath 被删除文件的文件名
-     * @return 文件删除成功返回true，否则返回false
-     */
     static boolean deleteFile(String filePath) {
         File file = new File(filePath);
         if (file.isFile() && file.exists()) {
@@ -82,9 +61,6 @@ public class FileHelper {
         return false;
     }
 
-    /**
-     * 从SD卡中读取一个文件
-     */
     static List<String> readFileFromSD(String path) {
         List<String> list = new ArrayList<>();
         File file = new File(path);
@@ -105,9 +81,6 @@ public class FileHelper {
         return list;
     }
 
-    /**
-     * 写入内容到一个文件
-     */
     static void writeFileFromSD(String path, List<String> content) {
         BufferedWriter out = null;
         try {
@@ -130,51 +103,24 @@ public class FileHelper {
         }
     }
 
-    /**
-     * 复制文件
-     */
-    public static void copyFile(String originalPath, String targetPath) {
-        File originalFile = new File(originalPath);
-        File targetFile = new File(targetPath);
-        if (originalFile.exists()) {
-            try {
-                FileInputStream fis = new FileInputStream(originalFile);
-                FileOutputStream fos = new FileOutputStream(targetFile);
-                byte[] buffer = new byte[1024];
-                int count;
-                while ((count = fis.read(buffer)) != -1) {
-                    fos.write(buffer, 0, count);
-                }
-                fos.flush();
-                fos.close();
-                fis.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    /**
-     * 从assets中拷贝文件
-     */
     public static void copyFilesAssets(AssetManager assetManager, String oldPath, String codePath) {
         try {
-            String[] fileNames = assetManager.list(oldPath);//获取assets目录下的所有文件及目录名
-            if (fileNames.length > 0) {//如果是目录
+            String[] fileNames = assetManager.list(oldPath);
+            if (fileNames.length > 0) {
                 File file = new File(codePath);
-                file.mkdirs();//如果文件夹不存在，则递归
+                file.mkdirs();
                 for (String fileName : fileNames) {
                     copyFilesAssets(assetManager, oldPath + File.separator + fileName, codePath + File.separator + fileName);
                 }
-            } else {//如果是文件
+            } else {
                 InputStream is = assetManager.open(oldPath);
                 FileOutputStream fos = new FileOutputStream(new File(codePath));
                 byte[] buffer = new byte[1024];
                 int byteCount = 0;
-                while ((byteCount = is.read(buffer)) != -1) {//循环从输入流读取 buffer字节
-                    fos.write(buffer, 0, byteCount);//将读取的输入流写入到输出流
+                while ((byteCount = is.read(buffer)) != -1) {
+                    fos.write(buffer, 0, byteCount);
                 }
-                fos.flush();//刷新缓冲区
+                fos.flush();
                 is.close();
                 fos.close();
             }
@@ -183,9 +129,6 @@ public class FileHelper {
         }
     }
 
-    /**
-     * 解压一个文件
-     */
     public static boolean unzipFile(String zipFileString, String outPathString, String fileParentName, String fileName) {
         try {
             File outPath = new File(outPathString);
@@ -221,9 +164,6 @@ public class FileHelper {
         return true;
     }
 
-    /**
-     * 解压整个zip
-     */
     public static boolean unzipFiles(String zipFileString, String outPathString) {
         try {
             File outPath = new File(outPathString);

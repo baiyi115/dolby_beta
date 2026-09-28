@@ -14,17 +14,6 @@ import android.widget.TextView;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.utils.Tools;
 
-
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/11
- *     desc   : 控件
- *     version: 1.0
- * </pre>
- */
-
 public class BaseDialogItem extends LinearLayout {
     private BaseDialogItem item;
     private Context context;
@@ -33,15 +22,6 @@ public class BaseDialogItem extends LinearLayout {
     protected TextView titleView, subView;
 
     protected String title, sub, key;
-
-    public BaseDialogItem(Context context, AttributeSet attrs, int defStyle) {
-        this(context, attrs);
-    }
-
-    public BaseDialogItem(Context context, AttributeSet attrs) {
-        super(context, attrs);
-        init(context, attrs);
-    }
 
     public BaseDialogItem(Context context) {
         super(context);
@@ -109,9 +89,6 @@ public class BaseDialogItem extends LinearLayout {
         }
     }
 
-    /**
-     * 依附于某个item，当该item未勾选时，本item为不可选状态
-     */
     public void setBaseOnView(BaseDialogItem item) {
         this.item = item;
         refresh();

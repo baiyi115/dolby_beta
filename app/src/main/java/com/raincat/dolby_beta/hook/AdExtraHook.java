@@ -1,4 +1,8 @@
 package com.raincat.dolby_beta.hook;
+import com.raincat.dolby_beta.xposed.XposedCompat;
+import com.raincat.dolby_beta.xposed.MethodHook;
+
+import android.content.Context;
 
 import com.raincat.dolby_beta.helper.ClassHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
@@ -8,25 +12,13 @@ import org.json.JSONObject;
 import java.lang.reflect.Method;
 import java.util.List;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2022/06/12
- *     desc   : 广告移除增强
- *     version: 1.0
- * </pre>
- */
 public class AdExtraHook {
-    public AdExtraHook() {
-        if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
-            List<Method> methods = ClassHelper.Ad.getAdMethod();
+    public AdExtraHook(Context context) {
+        if (SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key)) {
+            List<Method> methods = ClassHelper.Ad.getAdMethod(context);
             if (methods != null) {
                 for (Method method : methods) {
-                    XposedBridge.hookMethod(method, new XC_MethodHook() {
+                    XposedCompat.hookMethod(method, new MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                             super.beforeHookedMethod(param);

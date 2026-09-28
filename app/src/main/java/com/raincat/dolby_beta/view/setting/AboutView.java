@@ -7,25 +7,7 @@ import android.util.AttributeSet;
 
 import com.raincat.dolby_beta.view.BaseDialogItem;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/11/02
- *     desc   : 关于
- *     version: 1.0
- * </pre>
- */
-
 public class AboutView extends BaseDialogItem {
-    public AboutView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public AboutView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public AboutView(Context context) {
         super(context);
     }

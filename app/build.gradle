@@ -4,15 +4,16 @@ Properties props = new Properties()
 props.load(new FileInputStream(file("signing.properties")))
 
 android {
-    compileSdkVersion 29
-    buildToolsVersion "29.0.3"
+    namespace 'com.raincat.dolby_beta'
+    ndkVersion "26.1.10909125"
+    compileSdkVersion 34
 
     defaultConfig {
         applicationId "com.raincat.dolby_beta"
-        minSdkVersion 21
+        minSdkVersion 23
         targetSdkVersion 29
-        versionCode 354
-        versionName "3.5.4"
+        versionCode 390
+        versionName "3.9.0"
 
         ndk {
             abiFilters "arm64-v8a"
@@ -55,8 +56,13 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
-    lintOptions {
+    lint {
         abortOnError false
+        checkReleaseBuilds false
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 }
 
@@ -64,13 +70,12 @@ dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar"])
     implementation 'androidx.appcompat:appcompat:1.2.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
-    //xposed库
-    compileOnly 'de.robv.android.xposed:api:82'
-    compileOnly 'de.robv.android.xposed:api:82:sources'
+    //xposed库：libxposed modern API（旧de.robv已全部清除）
+    compileOnly 'io.github.libxposed:api:102.0.0'
+    //DexKit 运行时查找混淆方法
+    implementation 'org.luckypray:dexkit:2.3.0'
     implementation 'com.annimon:stream:1.2.2'
     implementation 'org.smali:dexlib2:2.3.4'
     implementation 'com.google.guava:guava:28.2-android'
     implementation 'com.google.code.gson:gson:2.8.9'
-
-    implementation project(':hotxposed')
 }

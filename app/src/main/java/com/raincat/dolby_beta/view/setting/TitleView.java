@@ -8,25 +8,7 @@ import android.util.TypedValue;
 import com.raincat.dolby_beta.BuildConfig;
 import com.raincat.dolby_beta.view.BaseDialogItem;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/13
- *     desc   : 标题
- *     version: 1.0
- * </pre>
- */
-
 public class TitleView extends BaseDialogItem {
-    public TitleView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public TitleView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public TitleView(Context context) {
         super(context);
     }

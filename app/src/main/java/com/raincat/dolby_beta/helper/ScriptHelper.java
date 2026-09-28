@@ -3,51 +3,46 @@ package com.raincat.dolby_beta.helper;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.text.TextUtils;
 
 import com.raincat.dolby_beta.BuildConfig;
 import com.raincat.dolby_beta.Hook;
 import com.raincat.dolby_beta.net.HTTPSTrustManager;
 import com.raincat.dolby_beta.utils.Tools;
+import com.raincat.dolby_beta.xposed.XposedCompat;
 import com.stericson.RootShell.execution.Command;
 
 import java.io.File;
-import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.security.KeyManagementException;
-import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.security.cert.Certificate;
-import java.security.cert.CertificateFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/09/26
- *     desc   : 脚本帮助类
- *     version: 1.0
- * </pre>
- */
 
 public class ScriptHelper {
-    //模块路径
+
     public static String modulePath;
-    //脚本路径
+
     private static String scriptPath;
-    //node路径
+
     private static String nodeLibPath;
 
-    private static final String[] STOP_PROXY = new String[]{"node=$(ps -ef |grep \"libnode.so app.js\" |grep -v grep)",
-            "if [ -n \"$node\" ]; then",
-            "killall -9 libnode.so >/dev/null 2>&1",
-            "fi"};
+    private static final String SCRIPT_ASSET_VERSION = "2026092705";
+
+    private static final String[] STOP_PROXY = new String[]{
+            "killall -9 libnode.so >/dev/null 2>&1 || true"
+    };
+
+    private static final AtomicBoolean proxyReadyMonitorStarted = new AtomicBoolean(false);
 
     @SuppressLint("StaticFieldLeak")
     private static Context neteaseContext;
@@ -58,21 +53,22 @@ public class ScriptHelper {
         return scriptPath;
     }
 
-    /**
-     * 初始化脚本
-     *
-     * @param cover 是否覆盖
-     */
     public static void initScript(Context context, boolean cover) {
         File unblockFile = new File(getScriptPath(context));
         neteaseContext = context;
-        if (cover || !unblockFile.exists() || !(BuildConfig.VERSION_CODE + "").equals(ExtraHelper.getExtraDate(ExtraHelper.APP_VERSION))) {
-            if (FileHelper.unzipFile(modulePath, getScriptPath(context), "assets", "UnblockNeteaseMusic.zip")) {
-                FileHelper.unzipFiles(getScriptPath(context) + "/UnblockNeteaseMusic.zip", getScriptPath(context));
+        boolean scriptChanged = !SCRIPT_ASSET_VERSION.equals(ExtraHelper.getExtraDate(ExtraHelper.SCRIPT_ASSET_VERSION))
+                || !(BuildConfig.VERSION_CODE + "").equals(ExtraHelper.getExtraDate(ExtraHelper.APP_VERSION));
+        if (cover || !unblockFile.exists() || scriptChanged) {
+
+            if (extractScript(context) && verifyScript()) {
+                Command auth = new Command(0, "cd " + getScriptPath(context), "chmod 0777 *");
+                Tools.shell(auth);
+                ExtraHelper.setExtraDate(ExtraHelper.APP_VERSION, BuildConfig.VERSION_CODE);
+                ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_ASSET_VERSION, SCRIPT_ASSET_VERSION);
+                XposedCompat.logInfo("UNM script released: " + getScriptPath(context));
+            } else {
+                XposedCompat.logError("UNM script release failed, keep current files and retry on next start");
             }
-            Command auth = new Command(0, "cd " + getScriptPath(context), "chmod 0777 *");
-            Tools.shell(auth);
-            ExtraHelper.setExtraDate(ExtraHelper.APP_VERSION, BuildConfig.VERSION_CODE);
         }
         if (TextUtils.isEmpty(nodeLibPath)) {
             nodeLibPath = TextUtils.isEmpty(modulePath) ? "" : modulePath.substring(0, modulePath.lastIndexOf('/'));
@@ -80,83 +76,250 @@ public class ScriptHelper {
         }
     }
 
-    /**
-     * 采用代理模式执行UnblockNeteaseMusic
-     */
+    private static boolean extractScript(Context context) {
+        File temp = new File(getScriptPath(context), ".unm_script.tmp");
+        long copied = copyModuleAsset(context, temp);
+        if (copied <= 0) {
+            XposedCompat.logError("UNM asset copy via AssetManager failed (" + copied + " bytes), fallback to ZipFile");
+            if (!FileHelper.unzipFile(modulePath, getScriptPath(context), "assets", "UnblockNeteaseMusic.zip")) {
+                XposedCompat.logError("UNM asset copy via ZipFile failed too");
+                return false;
+            }
+            File legacy = new File(getScriptPath(context), "UnblockNeteaseMusic.zip");
+            if (!legacy.renameTo(temp)) {
+                XposedCompat.logError("UNM asset rename failed");
+                return false;
+            }
+        } else {
+            XposedCompat.logInfo("UNM asset copied: " + copied + " bytes");
+        }
+        boolean extracted;
+        try {
+            extracted = FileHelper.unzipFiles(temp.getAbsolutePath(), getScriptPath(context));
+        } finally {
+
+            if (!temp.delete())
+                temp.deleteOnExit();
+        }
+        if (!extracted) {
+            XposedCompat.logError("UNM script zip extraction failed");
+            return false;
+        }
+        return true;
+    }
+
+    private static long copyModuleAsset(Context context, File target) {
+        try {
+            AssetManager assets = AssetManager.class.newInstance();
+            AssetManager.class.getMethod("addAssetPath", String.class).invoke(assets, modulePath);
+            try (InputStream is = assets.open("UnblockNeteaseMusic.zip");
+                 FileOutputStream fos = new FileOutputStream(target)) {
+                byte[] buffer = new byte[8192];
+                long total = 0;
+                int len;
+                while ((len = is.read(buffer)) != -1) {
+                    fos.write(buffer, 0, len);
+                    total += len;
+                }
+                fos.flush();
+                return total;
+            }
+        } catch (Throwable t) {
+            XposedCompat.log(t);
+            return -1;
+        }
+    }
+
+    private static boolean verifyScript() {
+        File app = new File(getScriptPath(neteaseContext), "app.js");
+        boolean ok = app.exists() && app.length() > 100_000;
+        if (!ok)
+            XposedCompat.logError("UNM script verify failed: app.js size="
+                    + (app.exists() ? app.length() : -1));
+        return ok;
+    }
+
     public static void startHttpProxyMode(final Context context) {
         stopScript();
-        ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "1");
-        Tools.showToastOnLooper(context, "服务器代理运行成功");
+        final String host = SettingHelper.getInstance().getHttpProxy();
+        final int port = SettingHelper.getInstance().getProxyPort();
+        XposedCompat.logInfo("UNM external proxy checking: host="
+                + SettingHelper.getInstance().getHttpProxy()
+                + " port=" + port
+                + " serverMode=" + SettingHelper.getInstance().getSetting(SettingHelper.proxy_server_key));
+        new Thread(() -> {
+            if (isProxyReachable(host, port)) {
+                ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "1");
+                XposedCompat.logInfo("UNM external proxy ready: " + host + ":" + port);
+                clearHostSongUrlInfoCache(neteaseContext);
+                Tools.showToastOnLooper(context, "服务器代理运行成功");
+            } else {
+                ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "0");
+                XposedCompat.logError("UNM external proxy unavailable: " + host + ":" + port);
+                Tools.showToastOnLooper(context, "服务器代理不可用，请检查地址和端口");
+            }
+        }, "UNM-external-proxy-check").start();
+    }
+
+    private static final String[] VALID_SOURCES = new String[]{"qq", "kugou", "kuwo", "bodian", "migu", "joox",
+            "youtube", "youtubedl", "ytdlp", "bilibili", "bilivideo", "pyncmd"};
+
+    private static String sanitizeSources(String original) {
+        StringBuilder sources = new StringBuilder();
+        if (original != null)
+            for (String source : original.split("\\s+"))
+                for (String valid : VALID_SOURCES)
+                    if (valid.equals(source)) {
+                        if (sources.length() > 0)
+                            sources.append(' ');
+                        sources.append(source);
+                        break;
+                    }
+        return sources.length() > 0 ? sources.toString() : "pyncmd kuwo bodian";
     }
 
     public static void startScript() {
-        String script = String.format("export ENABLE_FLAC=%s&&export MIN_BR=%s&&export QQ_COOKIE=\"%s\"&&export MIGU_COOKIE=\"%s\"&&libnode.so app.js -a 127.0.0.1 -o %s -p %s",
-                SettingHelper.getInstance().getSetting(SettingHelper.proxy_flac_key), SettingHelper.getInstance().getSetting(SettingHelper.proxy_priority_key) ? "256000" : "96000",
-                SettingHelper.getInstance().getQqCookie(),SettingHelper.getInstance().getMiguCookie(),SettingHelper.getInstance().getProxyOriginal(), SettingHelper.getInstance().getProxyPort() + ":" + (SettingHelper.getInstance().getProxyPort() + 1));
+        final int port = SettingHelper.getInstance().getProxyPort();
+        XposedCompat.logInfo("UNM local script starting: scriptPath=" + scriptPath
+                + " port=" + port
+                + " sources=" + sanitizeSources(SettingHelper.getInstance().getProxyOriginal()));
 
-        String[] START_PROXY = new String[]{"node=$(ps -ef |grep \"libnode.so app.js\" |grep -v grep)",
-                "if [ ! \"$node\" ]; then",
-                "cd " + scriptPath, nodeLibPath + "&&" + script,
-                "else",
-                "echo \"RESTART\"",
-                "killall -9 libnode.so >/dev/null 2>&1",
-                "fi"};
-        Command start = new Command(0, START_PROXY) {
+        String script = String.format(
+                "export ENABLE_FLAC=%s&&export MIN_BR=%s&&export QQ_COOKIE=\"%s\"&&export MIGU_COOKIE=\"%s\""
+                        + "&&export SIGN_CERT=\"%s/server.crt\"&&export SIGN_KEY=\"%s/server.key\""
+                        + "&&libnode.so app.js -a 127.0.0.1 -e - -o %s -p %s",
+                SettingHelper.getInstance().getSetting(SettingHelper.proxy_flac_key), SettingHelper.getInstance().getSetting(SettingHelper.proxy_priority_key) ? "256000" : "96000",
+                SettingHelper.getInstance().getQqCookie(), SettingHelper.getInstance().getMiguCookie(),
+                scriptPath, scriptPath,
+                sanitizeSources(SettingHelper.getInstance().getProxyOriginal()),
+                SettingHelper.getInstance().getProxyPort() + ":" + (SettingHelper.getInstance().getProxyPort() + 1));
+
+        script = script + " 2>&1";
+
+        String[] START_PROXY = new String[]{
+                "killall -9 libnode.so >/dev/null 2>&1 || true",
+                "sleep 1",
+                "cd " + scriptPath,
+                nodeLibPath + "&&" + script
+        };
+            Command start = new Command(0, START_PROXY) {
             @Override
             public void commandOutput(int id, String line) {
+                XposedCompat.logDebug("UNM: " + line);
                 if ((!line.contains("mERROR") && line.contains("Error:")) || line.contains("Port ") || line.contains("Please ")) {
+
+                    if (line.contains("ENOTFOUND") || line.contains("AggregateError")
+                            || line.contains("provider/match") || line.contains("TypeError")
+                            || line.contains("ECONNREFUSED") || line.contains("ETIMEDOUT")) {
+                        XposedCompat.logError("UNM source match failure: " + line.trim());
+                        return;
+                    }
                     Intent intent = new Intent(Hook.msg_send_notification);
                     intent.putExtra("message", line);
                     intent.putExtra("title", "脚本产生如下错误信息，若脚本因此无法运行请提issue");
                     if (neteaseContext != null)
                         neteaseContext.sendBroadcast(intent);
                 } else if (line.contains("HTTP Server running")) {
+                    XposedCompat.logInfo("UNM script running");
                     if (neteaseContext != null && ExtraHelper.getExtraDate(ExtraHelper.SCRIPT_STATUS).equals("0"))
                         Tools.showToastOnLooper(neteaseContext, "UnblockNeteaseMusic运行成功");
                     ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "1");
-                } else if (line.equals("Killed ")) {
-                    if (SettingHelper.getInstance().getSetting(SettingHelper.proxy_master_key))
-                        startScript();
+                    clearHostSongUrlInfoCache(neteaseContext);
                 } else if (line.equals("RESTART")) {
+                    XposedCompat.logInfo("UNM script restart detected");
                     ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "0");
                 }
             }
         };
+
+        XposedCompat.logInfo("UNM local script command submitted");
         Tools.shell(start);
+        watchProxyReady(neteaseContext, port);
+    }
+
+    private static void watchProxyReady(final Context context, final int port) {
+        if (!proxyReadyMonitorStarted.compareAndSet(false, true))
+            return;
+        new Thread(() -> {
+            for (int i = 0; i < 30; i++) {
+                if (isProxyReachable("127.0.0.1", port)) {
+                    ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_STATUS, "1");
+                    XposedCompat.logInfo("UNM proxy ready by port probe: 127.0.0.1:" + port);
+                    clearHostSongUrlInfoCache(context);
+                    break;
+                }
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if ("0".equals(ExtraHelper.getExtraDate(ExtraHelper.SCRIPT_STATUS)))
+                XposedCompat.logError("UNM proxy not ready after 15s: 127.0.0.1:" + port);
+            proxyReadyMonitorStarted.set(false);
+        }, "UNM-proxy-ready").start();
     }
 
     public static void stopScript() {
         Tools.shell(new Command(0, STOP_PROXY));
     }
 
-    /**
-     * 获取CA证书
-     */
+    public static void clearHostSongUrlInfoCache(Context context) {
+        if (context == null) return;
+        try {
+            Class<?> bridgeClass = Class.forName("uj0.u0", false, context.getClassLoader());
+            Object bridge = getBridgeInstance(bridgeClass);
+            if (bridge == null)
+                throw new IllegalStateException("uj0.u0 bridge instance not found");
+            bridgeClass.getDeclaredMethod("c").invoke(bridge);
+            XposedCompat.logInfo("UNM ready, host song url cache cleared");
+        } catch (Throwable t) {
+            XposedCompat.log("UNM clear song url cache failed");
+            XposedCompat.log(t);
+        }
+    }
+
+    private static Object getBridgeInstance(Class<?> bridgeClass) throws Exception {
+        for (Field field : bridgeClass.getDeclaredFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                    || !bridgeClass.isAssignableFrom(field.getType()))
+                continue;
+            field.setAccessible(true);
+            Object value = field.get(null);
+            if (value != null)
+                return value;
+        }
+        return null;
+    }
+
+    private static boolean isProxyReachable(String host, int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), 1000);
+            return socket.isConnected();
+        } catch (Throwable t) {
+            // Expected while the node process is still binding the port. watchProxyReady()
+            // reports the final verdict, so a stack trace per probe is pure noise.
+            XposedCompat.logDebug("UNM proxy not reachable yet: " + host + ":" + port);
+            return false;
+        }
+    }
+
     public static SSLSocketFactory getSSLSocketFactory(Context context) {
         SSLContext sslContext = null;
         try {
-            File ca = new File(getScriptPath(context) + File.separator + "ca.crt");
-            if (!SettingHelper.getInstance().getSetting(SettingHelper.proxy_server_key) && ca.exists()) {
-                InputStream certificate = new FileInputStream(ca);
-                Certificate certificate1 = CertificateFactory.getInstance("X.509").generateCertificate(certificate);
-                KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-                keyStore.load(null, null);
-                keyStore.setCertificateEntry("ca", certificate1);
-                TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-                trustManagerFactory.init(keyStore);
+
+            TrustManager[] trustManagers = new TrustManager[]{new HTTPSTrustManager()};
+            try {
                 sslContext = SSLContext.getInstance("TLS");
-                sslContext.init(null, trustManagerFactory.getTrustManagers(), new SecureRandom());
-            } else {
-                TrustManager[] trustManagers = new TrustManager[]{new HTTPSTrustManager()};
-                try {
-                    sslContext = SSLContext.getInstance("TLS");
-                    sslContext.init(null, trustManagers, new SecureRandom());
-                } catch (NoSuchAlgorithmException | KeyManagementException e) {
-                    e.printStackTrace();
-                }
+                sslContext.init(null, trustManagers, new SecureRandom());
+            } catch (NoSuchAlgorithmException | KeyManagementException e) {
+                XposedCompat.log("UNM SSL init failed");
+                XposedCompat.log(e);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            XposedCompat.log("UNM SSL factory init failed");
+            XposedCompat.log(e);
         }
 
         if (sslContext != null)

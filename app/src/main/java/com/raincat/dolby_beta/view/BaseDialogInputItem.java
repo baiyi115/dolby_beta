@@ -13,16 +13,6 @@ import android.widget.TextView;
 
 import com.raincat.dolby_beta.utils.Tools;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/09/09
- *     desc   : 控件
- *     version: 1.0
- * </pre>
- */
-
 public class BaseDialogInputItem extends LinearLayout {
     private BaseDialogItem item;
     private Context context;
@@ -31,15 +21,6 @@ public class BaseDialogInputItem extends LinearLayout {
     protected EditText editView;
 
     protected String title, defaultText;
-
-    public BaseDialogInputItem(Context context, AttributeSet attrs, int defStyle) {
-        this(context, attrs);
-    }
-
-    public BaseDialogInputItem(Context context, AttributeSet attrs) {
-        super(context, attrs);
-        init(context, attrs);
-    }
 
     public BaseDialogInputItem(Context context) {
         super(context);
@@ -107,9 +88,6 @@ public class BaseDialogInputItem extends LinearLayout {
         editView.setSelection(editView.getText().length());
     }
 
-    /**
-     * 依附于某个item，当该item未勾选时，本item为不可选状态
-     */
     public void setBaseOnView(BaseDialogItem item) {
         this.item = item;
         refresh();

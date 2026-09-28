@@ -5,14 +5,6 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
-/**
- * <pre>
- *     author : RainCat
- *     time   : 2020/03/30
- *     desc   : 额外信息
- *     version: 1.0
- * </pre>
- */
 public class ExtraDao {
     static final String TABLE_NAME = "extra";
     static final String EXTRA_KEY = "extra_key";
@@ -33,9 +25,6 @@ public class ExtraDao {
         dao = new ExtraDao(context);
     }
 
-    /**
-     * 保存额外记录
-     */
     public synchronized void saveExtra(String key, String value) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         if (db.isOpen()) {
@@ -47,9 +36,6 @@ public class ExtraDao {
         db.close();
     }
 
-    /**
-     * 获取某个额外记录
-     */
     public synchronized String getExtra(String key) {
         String extra = "-1";
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -61,27 +47,5 @@ public class ExtraDao {
         }
         db.close();
         return extra;
-    }
-
-    /**
-     * 删除一个人的某条额外记录
-     */
-    public synchronized void deleteExtra(String key) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        if (db.isOpen()) {
-            db.delete(TABLE_NAME, EXTRA_KEY + " = ? ", new String[]{key});
-        }
-        db.close();
-    }
-
-    /**
-     * 删除所有额外记录
-     */
-    public synchronized void deleteAllExtra() {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        if (db.isOpen()) {
-            db.delete(TABLE_NAME, null, null);
-        }
-        db.close();
     }
 }

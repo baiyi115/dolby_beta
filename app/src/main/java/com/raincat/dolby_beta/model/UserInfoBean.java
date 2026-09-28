@@ -1,15 +1,5 @@
 package com.raincat.dolby_beta.model;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/09/03
- *     desc   : 用户信息
- *     version: 1.0
- * </pre>
- */
-
 public class UserInfoBean {
     private int code;
     private ProfileBean profile;

@@ -5,25 +5,9 @@ import android.util.AttributeSet;
 import android.widget.Toast;
 
 import com.raincat.dolby_beta.helper.SettingHelper;
-import com.raincat.dolby_beta.hook.SettingHook;
 import com.raincat.dolby_beta.view.BaseDialogItem;
 
-/**
- *     time   : 2024/01/04
- *     desc   : 重置模块
- *     version: 1.0
- * </pre>
- */
-
 public class ResetModuleView extends BaseDialogItem {
-    public ResetModuleView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public ResetModuleView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public ResetModuleView(Context context) {
         super(context);
     }
@@ -42,4 +26,3 @@ public class ResetModuleView extends BaseDialogItem {
         });
     }
 }
-

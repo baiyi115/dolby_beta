@@ -9,25 +9,7 @@ import android.util.AttributeSet;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/09/10
- *     desc   : 音源切换
- *     version: 1.0
- * </pre>
- */
-
 public class ProxyOriginalView extends BaseDialogInputItem {
-    public ProxyOriginalView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public ProxyOriginalView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public ProxyOriginalView(Context context) {
         super(context);
     }
