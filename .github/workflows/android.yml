@@ -18,25 +18,35 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: set up JDK 1.8
-        uses: actions/setup-java@v1
+      # AGP 8.9.1 refuses to run on Java 8; the plugin requires JDK 17 or newer.
+      - name: set up JDK 21
+        uses: actions/setup-java@v4
         with:
-          java-version: 1.8
+          distribution: temurin
+          java-version: '21'
 
+      # Ships the freshest UnblockNeteaseMusic script. Deliberately non-fatal, and it only replaces
+      # the bundled zip after the new one exists, so an upstream outage cannot fail the build or
+      # leave the asset missing.
       - name: Sync latest Unblocked Music source code
-        run:
-          git clone --depth=1 https://github.com/luoxingran/server.git && cd server && zip -r ../UnblockNeteaseMusic.zip . && cd .. && rm ./app/src/main/assets/UnblockNeteaseMusic.zip && rm -rf server && mv ./UnblockNeteaseMusic.zip ./app/src/main/assets/UnblockNeteaseMusic.zip
+        continue-on-error: true
+        run: |
+          git clone --depth=1 https://github.com/luoxingran/server.git
+          (cd server && zip -rq ../UnblockNeteaseMusic.zip .)
+          rm -rf server
+          mv -f UnblockNeteaseMusic.zip app/src/main/assets/UnblockNeteaseMusic.zip
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # Signing needs the KEY_* Gradle properties; without them the release variant builds unsigned.
       - name: Build with Gradle
         run: ./gradlew app:assembleRelease
 
       - name: Upload APK
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: ${{github.workspace}}/app/build/outputs/apk/release/*.apk
