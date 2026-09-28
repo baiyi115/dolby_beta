@@ -1,4 +1,6 @@
 package com.raincat.dolby_beta;
+import com.raincat.dolby_beta.xposed.XposedCompat;
+import com.raincat.dolby_beta.xposed.MethodHook;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -14,127 +16,95 @@ import com.raincat.dolby_beta.helper.NotificationHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.hook.AdAndUpdateHook;
 import com.raincat.dolby_beta.hook.AdExtraHook;
-import com.raincat.dolby_beta.hook.AutoSignInHook;
 import com.raincat.dolby_beta.hook.BlackHook;
 import com.raincat.dolby_beta.hook.CdnHook;
-import com.raincat.dolby_beta.hook.CommentHotClickHook;
 import com.raincat.dolby_beta.hook.DownloadMD5Hook;
 import com.raincat.dolby_beta.hook.EAPIHook;
-import com.raincat.dolby_beta.hook.GrayHook;
-import com.raincat.dolby_beta.hook.HideBannerHook;
-import com.raincat.dolby_beta.hook.HideBubbleHook;
-import com.raincat.dolby_beta.hook.HideSidebarHook;
 import com.raincat.dolby_beta.hook.HideTabHook;
-import com.raincat.dolby_beta.hook.InternalDialogHook;
-import com.raincat.dolby_beta.hook.LoginFixHook;
-import com.raincat.dolby_beta.hook.MagiskFixHook;
-import com.raincat.dolby_beta.hook.NightModeHook;
-import com.raincat.dolby_beta.hook.PlayerActivityHook;
 import com.raincat.dolby_beta.hook.ProxyHook;
+import com.raincat.dolby_beta.hook.RnSettingEntryHook;
 import com.raincat.dolby_beta.hook.SettingHook;
 import com.raincat.dolby_beta.hook.UserProfileHook;
-import com.raincat.dolby_beta.hook.ListentogetherHook;
 import com.raincat.dolby_beta.utils.Tools;
 
 import java.io.File;
 import java.io.IOException;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
-
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/09/22
- *     desc   : hook入口
- *     version: 1.0
- * </pre>
- */
-
 public class Hook {
     private final static String PACKAGE_NAME = "com.netease.cloudmusic";
-    //进程初始化状态
+
+    private static void safeHook(String name, Runnable init) {
+        try {
+            init.run();
+        } catch (Throwable t) {
+            XposedCompat.noteHookFailed("init " + name, t);
+        }
+    }
+
+    public static void installCrashLogger() {
+        Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            XposedCompat.log("PROCESS UNCAUGHT EXCEPTION on thread " + thread.getName());
+            XposedCompat.log(throwable);
+            if (prev != null)
+                prev.uncaughtException(thread, throwable);
+        });
+    }
+
     public boolean playProcessInit = false;
     public boolean mainProcessInit = false;
-    //主线程反编译dex完成后通知可以对play进程进行hook了
+
     private final String msg_hook_play_process = "hookPlayProcess";
-    //play进程初始化完成通知主线程
+
     private final String msg_play_process_init_finish = "playProcessInitFinish";
-    //发通知
+
     public static final String msg_send_notification = "sendNotification";
 
-    public Hook(XC_LoadPackage.LoadPackageParam lpparam) {
-        XposedHelpers.findAndHookMethod(XposedHelpers.findClass("com.netease.cloudmusic.NeteaseMusicApplication", lpparam.classLoader),
-                "attachBaseContext", Context.class, new XC_MethodHook() {
+    public Hook(ClassLoader classLoader) {
+        XposedCompat.findAndHookMethod(XposedCompat.findClass("com.netease.cloudmusic.NeteaseMusicApplication", classLoader),
+                "attachBaseContext", Context.class, new MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         final Context context = (Context) param.thisObject;
+                        final long hookStart = System.currentTimeMillis();
                         final int versionCode = context.getPackageManager().getPackageInfo(PACKAGE_NAME, 0).versionCode;
-                        //初始化仓库
+
                         ExtraHelper.init(context);
-                        //初始化设置
+
                         SettingHelper.init(context);
 
-                        final String processName = Tools.getCurrentProcessName(context);
-                        if (processName.equals(PACKAGE_NAME)) {
-                            //设置
-                            new SettingHook(context, versionCode);
-                            //总开关
-                            if (!SettingHelper.getInstance().getSetting(SettingHelper.master_key))
-                                return;
-                            //音源代理
-                            new ProxyHook(context, false);
-                            //黑胶
-                            if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
-                                new BlackHook(context, versionCode);
-                                deleteAdAndTinker();
-                            }
-                            //一起听
-                            if (SettingHelper.getInstance().isEnable(SettingHelper.listen_key)) {
-                                new ListentogetherHook(context,versionCode);
-                            }
-                            //不变灰
-                            new GrayHook(context);
-                            //自动签到
-                            new AutoSignInHook(context, versionCode);
-                            //去广告与去升级
-                            new AdAndUpdateHook(context, versionCode);
-                            //修复magisk冲突导致的无法读写外置sd卡
-                            new MagiskFixHook(context);
-                            //去掉内测与听歌识曲弹窗
-                            new InternalDialogHook(context, versionCode);
-                            //修复登录失败
-                            new LoginFixHook(context);
-//                            new TestHook(context);
-                            ClassHelper.getCacheClassList(context, versionCode, () -> {
-                                //获取账号信息
-                                new UserProfileHook(context);
-                                //网络访问
-                                new EAPIHook(context);
-                                //下载MD5校验
-                                new DownloadMD5Hook(context);
-                                //夜间模式
-                                new NightModeHook(context, versionCode);
-                                //精简tab
-                                new HideTabHook(context, versionCode);
-                                //精简侧边栏
-                                new HideSidebarHook(context, versionCode);
-                                //移除Banner
-                                new HideBannerHook(context, versionCode);
-                                //隐藏小红点
-                                new HideBubbleHook(context);
-                                //黑胶停转，隐藏K歌按钮
-                                new PlayerActivityHook(context, versionCode);
-                                //打开评论后优先显示最热评论
-                                new CommentHotClickHook(context);
-                                //绕过CDN责任链拦截器检测
-                                new CdnHook(context, versionCode);
-                                //广告移除增强
-                                new AdExtraHook();
+                        // Runtime tracing switch: dropping this file keeps full debug logs available
+                        // on a device build without rebuilding the module.
+                        java.io.File debugFlag = new java.io.File(
+                                context.getExternalFilesDir(null), "dolby_beta_debug");
+                        if (debugFlag.exists()) {
+                            XposedCompat.setDebug(true);
+                            XposedCompat.logInfo("debug tracing enabled: " + debugFlag.getAbsolutePath());
+                        }
 
+                        final String processName = Tools.getCurrentProcessName(context);
+                        XposedCompat.logInfo("attachBaseContext: process=" + processName
+                                + " versionCode=" + versionCode
+                                + " master=" + SettingHelper.getInstance().getSetting(SettingHelper.master_key));
+                        if (processName.equals(PACKAGE_NAME)) {
+                            installCrashLogger();
+
+                            installAll(alwaysSpecs(context, versionCode));
+
+                            if (!SettingHelper.getInstance().getSetting(SettingHelper.master_key)) {
+                                XposedCompat.logInfo("master switch off, hooks skipped");
+                                return;
+                            }
+                            installAll(immediateSpecs(context, versionCode));
+                            XposedCompat.logInfo("main-process immediate hooks installed, elapsed="
+                                    + (System.currentTimeMillis() - hookStart) + "ms");
+                            XposedCompat.logSummary("main-process immediate hooks");
+                            ClassHelper.getCacheClassList(context, versionCode, () -> {
+                                installAll(deferredSpecs(context, versionCode));
+
+                                XposedCompat.logInfo("main-process deferred hooks ready, elapsed="
+                                        + (System.currentTimeMillis() - hookStart) + "ms");
+                                XposedCompat.logSummary("main-process deferred hooks");
                                 mainProcessInit = true;
                                 if (mainProcessInit && playProcessInit)
                                     context.sendBroadcast(new Intent(msg_hook_play_process));
@@ -146,43 +116,49 @@ public class Hook {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
                                     if (msg_play_process_init_finish.equals(intent.getAction())) {
+                                        XposedCompat.logInfo("broadcast received: " + msg_play_process_init_finish);
                                         playProcessInit = true;
                                         if (mainProcessInit && playProcessInit)
                                             context.sendBroadcast(new Intent(msg_hook_play_process));
-                                    } else if (msg_send_notification.equals(intent.getAction())
-                                            && SettingHelper.getInstance().isEnable(SettingHelper.warn_key)) {
+                                    } else if (msg_send_notification.equals(intent.getAction())) {
+                                        XposedCompat.logInfo("notification requested: code=" + intent.getIntExtra("code", 0x10)
+                                                + " title=" + intent.getStringExtra("title"));
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
                                             NotificationHelper.getInstance(context).sendUnLockNotification(context, intent.getIntExtra("code", 0x10),
                                                     intent.getStringExtra("title"), intent.getStringExtra("title"), intent.getStringExtra("message"));
-                                        XposedBridge.log(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
+                                        XposedCompat.logInfo(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
                                     }
                                 }
                             }, intentFilter);
                         } else if (processName.equals(PACKAGE_NAME + ":play") && SettingHelper.getInstance().getSetting(SettingHelper.master_key)) {
-                            //音源代理
-                            new ProxyHook(context, true);
+                            installCrashLogger();
+                            XposedCompat.logInfo("play-process installing");
+
+                            installAll(playSpecs(context));
                             IntentFilter intentFilter = new IntentFilter();
                             intentFilter.addAction(msg_hook_play_process);
                             context.registerReceiver(new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
                                     if (msg_hook_play_process.equals(intent.getAction())) {
+                                        XposedCompat.logInfo("broadcast received: " + msg_hook_play_process);
                                         ClassHelper.getCacheClassList(context, versionCode, () -> {
-                                            new EAPIHook(context);
-                                            new CdnHook(context, versionCode);
+                                            installAll(playDeferredSpecs(context, versionCode));
+                                            XposedCompat.logInfo("play-process immediate hooks ready before deferred hooks");
+                                            XposedCompat.logSummary("play-process hooks");
                                         });
                                     }
                                 }
                             }, intentFilter);
+                            XposedCompat.logInfo("play-process immediate hooks ready, init finish broadcast sent");
                             context.sendBroadcast(new Intent(msg_play_process_init_finish));
                         }
                     }
                 });
 
-        //关闭tinker
-        Class<?> tinkerClass = XposedHelpers.findClassIfExists("com.tencent.tinker.loader.app.TinkerApplication", lpparam.classLoader);
+        Class<?> tinkerClass = XposedCompat.findClassIfExists("com.tencent.tinker.loader.app.TinkerApplication", classLoader);
         if (tinkerClass != null)
-            XposedBridge.hookAllConstructors(tinkerClass, new XC_MethodHook() {
+            XposedCompat.hookAllConstructors(tinkerClass, new MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     super.beforeHookedMethod(param);
@@ -191,11 +167,83 @@ public class Hook {
             });
     }
 
+    // ------------------------------------------------------------------ hook registry
+
     /**
-     * 删掉广告和热修复
+     * Registry row: a name for the log, an optional enable condition, and the factory. Adding a
+     * hook is one row in the lists below instead of another branch in the install flow.
      */
+    private static final class HookSpec {
+        final String name;
+        final Condition condition;
+        final Runnable installer;
+
+        HookSpec(String name, Condition condition, Runnable installer) {
+            this.name = name;
+            this.condition = condition;
+            this.installer = installer;
+        }
+    }
+
+    private interface Condition {
+        boolean met();
+    }
+
+    private static void installAll(java.util.List<HookSpec> specs) {
+        for (HookSpec spec : specs) {
+            if (spec.condition != null && !spec.condition.met())
+                continue;
+            safeHook(spec.name, spec.installer);
+        }
+    }
+
+    /** Entry points, installed before the master switch is consulted. */
+    private java.util.List<HookSpec> alwaysSpecs(Context context, int versionCode) {
+        return java.util.Arrays.asList(
+                new HookSpec("SettingHook", null, () -> new SettingHook(context, versionCode)),
+                new HookSpec("RnSettingEntryHook", null, () -> new RnSettingEntryHook(context)));
+    }
+
+    private java.util.List<HookSpec> immediateSpecs(Context context, int versionCode) {
+        return java.util.Arrays.asList(
+                new HookSpec("ProxyHook", null, () -> new ProxyHook(context, false)),
+                new HookSpec("BlackHook",
+                        () -> SettingHelper.getInstance().isEnable(SettingHelper.black_key),
+                        () -> {
+                            new BlackHook(context, versionCode);
+                            try {
+                                deleteAdAndTinker();
+                            } catch (IOException e) {
+                                XposedCompat.noteHookFailed("deleteAdAndTinker", e);
+                            }
+                        }),
+                new HookSpec("AdAndUpdateHook", null, () -> new AdAndUpdateHook(context, versionCode)));
+    }
+
+    /** Needs the decompiled class list, so it runs after ClassHelper's cache is ready. */
+    private java.util.List<HookSpec> deferredSpecs(Context context, int versionCode) {
+        return java.util.Arrays.asList(
+                new HookSpec("UserProfileHook", null, () -> new UserProfileHook(context)),
+                new HookSpec("EAPIHook", null, () -> new EAPIHook(context)),
+                new HookSpec("DownloadMD5Hook", null, () -> new DownloadMD5Hook(context)),
+                new HookSpec("HideTabHook", null, () -> new HideTabHook(context, versionCode)),
+                new HookSpec("CdnHook", null, () -> new CdnHook(context, versionCode)),
+                new HookSpec("AdExtraHook", null, () -> new AdExtraHook(context)));
+    }
+
+    private java.util.List<HookSpec> playSpecs(Context context) {
+        return java.util.Collections.singletonList(
+                new HookSpec("play:ProxyHook", null, () -> new ProxyHook(context, true)));
+    }
+
+    private java.util.List<HookSpec> playDeferredSpecs(Context context, int versionCode) {
+        return java.util.Arrays.asList(
+                new HookSpec("play:EAPIHook", null, () -> new EAPIHook(context)),
+                new HookSpec("play:CdnHook", null, () -> new CdnHook(context, versionCode)));
+    }
+
     private void deleteAdAndTinker() throws IOException {
-        //广告缓存路径
+
         String CACHE_PATH = Environment.getExternalStorageDirectory() + "/netease/cloudmusic/Ad";
         String CACHE_PATH2 = Environment.getExternalStorageDirectory() + "/Android/data/com.netease.cloudmusic/cache/Ad";
 
@@ -203,7 +251,6 @@ public class Hook {
 
         FileHelper.deleteDirectory(CACHE_PATH);
         FileHelper.deleteDirectory(CACHE_PATH2);
-
 
         File tinkerFile = new File(TINKER_PATH);
         if (tinkerFile.exists() && tinkerFile.isDirectory())

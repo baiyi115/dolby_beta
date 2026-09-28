@@ -1,25 +1,12 @@
 package com.raincat.dolby_beta.helper;
+import com.raincat.dolby_beta.xposed.XposedCompat;
 
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 
-import de.robv.android.xposed.XposedBridge;
-
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/10/25
- *     desc   : 通知帮助类
- *     version: 1.0
- * </pre>
- */
-
 public class MessageHelper {
     public static void sendNotification(Context context, int code) {
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.warn_key))
-            return;
         Intent intent = new Intent();
         intent.putExtra("title", "错误");
         switch (code) {
@@ -48,7 +35,7 @@ public class MessageHelper {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             NotificationHelper.getInstance(context).sendUnLockNotification(context, intent.getIntExtra("code", 0x10),
                     intent.getStringExtra("title"), intent.getStringExtra("title"), intent.getStringExtra("message"));
-        XposedBridge.log(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
+        XposedCompat.logInfo(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
     }
 
     private final static String normalMessage = "请确保已使用官方版网易云。";

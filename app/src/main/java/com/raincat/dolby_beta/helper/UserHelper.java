@@ -6,20 +6,8 @@ import com.raincat.dolby_beta.net.Http;
 
 import java.util.HashMap;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/15
- *     desc   : 用户状态帮助类
- *     version: 1.0
- * </pre>
- */
-
 public class UserHelper {
-    /**
-     * 通过cookie获取用户信息
-     */
+
     public static void getUserInfo() {
         HashMap<String, Object> headers = new HashMap<>();
         headers.put("cookie", ExtraHelper.getExtraDate(ExtraHelper.COOKIE));

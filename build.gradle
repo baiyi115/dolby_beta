@@ -1,21 +1,19 @@
 buildscript {
     repositories {
-        maven { url "https://maven.aliyun.com/nexus/content/repositories/jcenter/" }
-        mavenCentral()
-        jcenter()
         google()
+        mavenCentral()
+        maven { url "https://maven.aliyun.com/nexus/content/repositories/jcenter/" }
     }
     dependencies {
-        classpath "com.android.tools.build:gradle:4.0.2"
+        classpath "com.android.tools.build:gradle:8.9.1"
     }
 }
 
 allprojects {
     repositories {
-        maven { url "https://maven.aliyun.com/nexus/content/repositories/jcenter/" }
-        mavenCentral()
-        jcenter()
         google()
+        mavenCentral()
+        maven { url "https://maven.aliyun.com/nexus/content/repositories/jcenter/" }
         flatDir {
             dirs 'libs'
         }

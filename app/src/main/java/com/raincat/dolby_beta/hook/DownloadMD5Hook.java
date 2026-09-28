@@ -1,5 +1,7 @@
 package com.raincat.dolby_beta.hook;
-
+import com.raincat.dolby_beta.xposed.XposedCompat;
+import com.raincat.dolby_beta.xposed.MethodHook;
+import static com.raincat.dolby_beta.xposed.XposedCompat.*;
 
 import android.content.Context;
 
@@ -10,23 +12,9 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.security.MessageDigest;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedHelpers;
-
-import static de.robv.android.xposed.XposedBridge.hookMethod;
-
-/**
- * <pre>
- *     author : RainCat
- *     time   : 2019/10/23
- *     desc   : 下载强制返回正确MD5
- *     version: 1.0
- * </pre>
- */
-
 public class DownloadMD5Hook {
     public DownloadMD5Hook(Context context) {
-        hookMethod(ClassHelper.DownloadTransfer.getCheckMd5Method(context), new XC_MethodHook() {
+        hookMethod(ClassHelper.DownloadTransfer.getCheckMd5Method(context), new MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) {
                 final Object[] array = (Object[]) param.args[3];
@@ -36,13 +24,13 @@ public class DownloadMD5Hook {
             }
         });
 
-        hookMethod(ClassHelper.DownloadTransfer.getCheckDownloadStatusMethod(context), new XC_MethodHook() {
+        hookMethod(ClassHelper.DownloadTransfer.getCheckDownloadStatusMethod(context), new MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) {
                 Method[] methods = param.args[0].getClass().getDeclaredMethods();
                 for (Method m : methods) {
                     if (m.getReturnType() == long.class) {
-                        long length = (long) XposedHelpers.callMethod(param.args[0], m.getName());
+                        long length = (long) XposedCompat.callMethod(param.args[0], m.getName());
                         param.setResult(length);
                         break;
                     }
@@ -68,11 +56,6 @@ public class DownloadMD5Hook {
         }
     }
 
-    /**
-     * Convert the hash bytes to hex digits string
-     *
-     * @return The converted hex digits string
-     */
     private String convertHashToString(byte[] hashBytes) {
         StringBuilder returnVal = new StringBuilder();
         for (byte hashByte : hashBytes) {

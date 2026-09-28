@@ -1,6 +1,10 @@
 package com.raincat.dolby_beta.hook;
+import com.raincat.dolby_beta.xposed.XposedCompat;
+import com.raincat.dolby_beta.xposed.MethodHook;
+import static com.raincat.dolby_beta.xposed.XposedCompat.*;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -18,129 +22,157 @@ import android.widget.TextView;
 
 import com.raincat.dolby_beta.helper.ExtraHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
-import com.raincat.dolby_beta.model.SidebarEnum;
 import com.raincat.dolby_beta.utils.Tools;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
 import com.raincat.dolby_beta.view.BaseDialogItem;
-import com.raincat.dolby_beta.view.beauty.BeautyBannerHideView;
-import com.raincat.dolby_beta.view.beauty.BeautyBlackHideView;
-import com.raincat.dolby_beta.view.beauty.BeautyBubbleHideView;
-import com.raincat.dolby_beta.view.beauty.BeautyCommentHotView;
-import com.raincat.dolby_beta.view.beauty.BeautyKSongHideView;
-import com.raincat.dolby_beta.view.beauty.BeautyNightModeView;
-import com.raincat.dolby_beta.view.beauty.BeautyRotationView;
-import com.raincat.dolby_beta.view.beauty.BeautySidebarHideItem;
-import com.raincat.dolby_beta.view.beauty.BeautySidebarHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyTabHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyTitleView;
-import com.raincat.dolby_beta.view.beauty.PlayerBackgroundView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundMasterView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundTitleView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundPictureUrlView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundBlurRadiusView;
 import com.raincat.dolby_beta.view.proxy.*;
 import com.raincat.dolby_beta.view.proxy.configuration.*;
 import com.raincat.dolby_beta.view.setting.AboutView;
 import com.raincat.dolby_beta.view.setting.BeautyView;
 import com.raincat.dolby_beta.view.setting.BlackView;
-import com.raincat.dolby_beta.view.setting.DexView;
-import com.raincat.dolby_beta.view.setting.FixCommentView;
 import com.raincat.dolby_beta.view.setting.MasterView;
 import com.raincat.dolby_beta.view.setting.ProxyView;
 import com.raincat.dolby_beta.view.setting.ResetModuleView;
-import com.raincat.dolby_beta.view.setting.SignSongDailyView;
-import com.raincat.dolby_beta.view.setting.SignSongSelfView;
-import com.raincat.dolby_beta.view.setting.SignView;
 import com.raincat.dolby_beta.view.setting.TitleView;
-import com.raincat.dolby_beta.view.setting.UpdateView;
-import com.raincat.dolby_beta.view.setting.ListenView;
-import com.raincat.dolby_beta.view.setting.WarnView;
-
 
 import java.lang.reflect.Field;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedHelpers;
-
-import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
-import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
-
-/**
- * <pre>
- *     author : RainCat
- *     time   : 2019/10/26
- *     desc   : 设置
- *     version: 1.0
- * </pre>
- */
 public class SettingHook {
-    private String SettingActivity;
-    private String switchViewName = "";
+    private final String SettingActivity;
+    private List<String> switchViewNames = new java.util.ArrayList<>();
     private TextView titleView, subView;
-    private LinearLayout dialogRoot, dialogProxyRoot, dialogBeautyRoot, dialogSidebarRoot;
+    private LinearLayout dialogRoot, dialogProxyRoot, dialogBeautyRoot;
 
     private BroadcastReceiver broadcastReceiver;
+    private Context broadcastReceiverContext;
+
+    private static SettingHook instance;
+
+    public static void showFromEntry(Context context) {
+        if (instance == null) {
+            XposedCompat.log("dolby_beta SettingHook instance not ready");
+            return;
+        }
+        instance.registerBroadcastReceiver(context);
+        instance.showSettingDialog(context);
+    }
+
+    static void releaseFromEntry(Context context) {
+        if (instance != null)
+            instance.unregisterBroadcastReceiverFor(context);
+    }
 
     public SettingHook(Context context,int versionCode) {
-        //一切的前提，没这个页面连设置都进不去
-        if(versionCode>=8007000)
-        {
-            SettingActivity="com.netease.cloudmusic.music.biz.setting.activity.SettingActivity";
-        }else
-        {
-            SettingActivity="com.netease.cloudmusic.activity.SettingActivity";
-        }
+        instance = this;
+
+        SettingActivity = versionCode >= 8007000
+                ? "com.netease.cloudmusic.music.biz.setting.activity.SettingActivity"
+                : "com.netease.cloudmusic.activity.SettingActivity";
         Class<?> settingActivityClass = findClassIfExists(SettingActivity, context.getClassLoader());
-        Field[] allFields = settingActivityClass.getDeclaredFields();
-        for (Field field : allFields) {
-            if (field.getType().getName().contains("Switch")) {
-                switchViewName = field.getName();
-                break;
-            }
+        if (settingActivityClass == null) {
+            XposedCompat.log("dolby_beta SettingHook: SettingActivity not found " + SettingActivity);
+            return;
         }
 
-        findAndHookMethod(settingActivityClass, "onCreate", Bundle.class, new XC_MethodHook() {
+        // Some Switch fields are never assigned on certain versions, so read every one.
+        for (Field field : settingActivityClass.getDeclaredFields()) {
+            if (field.getType().getName().contains("Switch"))
+                switchViewNames.add(field.getName());
+        }
+
+        findAndHookMethod(settingActivityClass, "onCreate", Bundle.class, new MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 super.afterHookedMethod(param);
-                Context c = (Context) param.thisObject;
-                //注册广播
-                registerBroadcastReceiver(c);
-                //初始化控件
-                initView(c);
+                try {
+                    Context c = (Context) param.thisObject;
+
+                    registerBroadcastReceiver(c);
+
+                    initView(c);
+                } catch (Throwable t) {
+                    XposedCompat.log("dolby_beta SettingHook initView: " + android.util.Log.getStackTraceString(t));
+                }
             }
         });
 
-        findAndHookMethod(settingActivityClass, "onDestroy", new XC_MethodHook() {
+        findAndHookMethod(settingActivityClass, "onResume", new MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                if (titleView != null)
+                    return;
+                if (!param.thisObject.getClass().getName().equals(SettingActivity))
+                    return;
+                try {
+                    initView((Context) param.thisObject);
+                    XposedCompat.logInfo("dolby_beta SettingHook entry injected on onResume");
+                } catch (Throwable t) {
+                    XposedCompat.log("dolby_beta SettingHook onResume initView: " + android.util.Log.getStackTraceString(t));
+                }
+            }
+        });
+
+        findAndHookMethod(settingActivityClass, "onDestroy", new MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 super.beforeHookedMethod(param);
-                if (broadcastReceiver != null)
-                    ((Context) param.thisObject).unregisterReceiver(broadcastReceiver);
+                unregisterBroadcastReceiverFor((Context) param.thisObject);
             }
         });
     }
 
     private void initView(final Context context) {
         TextView originalText = null;
-        //获取开关控件
-        View switchCompat = (View) XposedHelpers.getObjectField(context, switchViewName);
-        //获取开关控件爸爸
-        ViewGroup parent = (ViewGroup) switchCompat.getParent();
-        //获取开关控件爷爷
-        ViewGroup grandparent = (ViewGroup) parent.getParent();
+
+        ViewGroup container = null;
+        View styleRef = null;
+        int rootId = context.getResources().getIdentifier("preferenceRoot", "id", context.getPackageName());
+        if (rootId != 0 && context instanceof Activity) {
+            Object root = ((Activity) context).findViewById(rootId);
+            if (root instanceof ViewGroup)
+                container = (ViewGroup) root;
+        }
+        if (container != null) {
+            for (int i = 0; i < container.getChildCount(); i++) {
+                View child = container.getChildAt(i);
+                if (child instanceof ViewGroup && ((ViewGroup) child).getChildCount() > 0) {
+                    styleRef = ((ViewGroup) child).getChildAt(i == 0 ? 1 : 0);
+                    break;
+                }
+            }
+        } else {
+            View switchCompat = null;
+            for (String name : switchViewNames) {
+                Object v = XposedCompat.getObjectField(context, name);
+                if (v instanceof View) {
+                    switchCompat = (View) v;
+                    break;
+                }
+            }
+            if (switchCompat == null) {
+                XposedCompat.log("dolby_beta SettingHook: no injection point found");
+                return;
+            }
+            ViewGroup parent = (ViewGroup) switchCompat.getParent();
+            container = (ViewGroup) parent.getParent();
+            styleRef = parent;
+        }
 
         LinearLayout linearLayout = new LinearLayout(context);
-        ViewGroup.LayoutParams layoutParams = parent.getLayoutParams();
-        linearLayout.setLayoutParams(layoutParams);
-        linearLayout.setBackground(parent.getBackground());
+        if (styleRef != null) {
+            linearLayout.setBackground(styleRef.getBackground());
+            linearLayout.setLayoutParams(styleRef.getLayoutParams());
+        } else {
+            linearLayout.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
         linearLayout.setGravity(Gravity.CENTER_VERTICAL);
         linearLayout.setOrientation(LinearLayout.HORIZONTAL);
-        grandparent.addView(linearLayout, 0);
+        container.addView(linearLayout, 0);
 
         titleView = new TextView(context);
         linearLayout.addView(titleView);
@@ -148,14 +180,14 @@ public class SettingHook {
         linearLayout.addView(subView);
         refresh();
         start:
-        for (int i = 0; i < parent.getChildCount(); i++) {
-            if (parent.getChildAt(i) instanceof TextView) {
-                originalText = (TextView) parent.getChildAt(i);
+        for (int i = 0; i < container.getChildCount(); i++) {
+            if (container.getChildAt(i) instanceof TextView) {
+                originalText = (TextView) container.getChildAt(i);
                 break;
-            } else if (parent.getChildAt(i) instanceof ViewGroup) {
-                for (int j = 0; j < ((ViewGroup) parent.getChildAt(i)).getChildCount(); j++) {
-                    if (((ViewGroup) parent.getChildAt(i)).getChildAt(j) instanceof TextView) {
-                        originalText = (TextView) ((ViewGroup) parent.getChildAt(i)).getChildAt(j);
+            } else if (container.getChildAt(i) instanceof ViewGroup) {
+                for (int j = 0; j < ((ViewGroup) container.getChildAt(i)).getChildCount(); j++) {
+                    if (((ViewGroup) container.getChildAt(i)).getChildAt(j) instanceof TextView) {
+                        originalText = (TextView) ((ViewGroup) container.getChildAt(i)).getChildAt(j);
                         break start;
                     }
                 }
@@ -171,10 +203,14 @@ public class SettingHook {
         }
 
         linearLayout.setOnClickListener(view -> showSettingDialog(context));
+        XposedCompat.logInfo("dolby_beta SettingHook entry injected into " + container.getClass().getName());
     }
 
     @SuppressLint("SetTextI18n")
     private void refresh() {
+
+        if (titleView == null || subView == null)
+            return;
         titleView.setText("杜比大喇叭β");
         if (ExtraHelper.getExtraDate(ExtraHelper.USER_ID).equals("-1")) {
             subView.setText("（USERID获取失败）");
@@ -187,47 +223,98 @@ public class SettingHook {
     }
 
     private void registerBroadcastReceiver(final Context context) {
+        if (isReceiverUsable(context))
+            return;
+        if (broadcastReceiver != null && isRegisteredContextInactive())
+            unregisterBroadcastReceiverFor(broadcastReceiverContext);
+        if (broadcastReceiver != null)
+            return;
+
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(SettingHelper.refresh_setting);
         intentFilter.addAction(SettingHelper.proxy_setting);
         intentFilter.addAction(SettingHelper.beauty_setting);
-        intentFilter.addAction(SettingHelper.sidebar_setting);
-        intentFilter.addAction(SettingHelper.background_setting);
         intentFilter.addAction(SettingHelper.proxy_configuration_setting);
         broadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context c, Intent intent) {
-                if (intent.getAction().equals(SettingHelper.refresh_setting)) {
-                    for (int i = 0; i < dialogRoot.getChildCount(); i++) {
-                        if (dialogRoot.getChildAt(i) instanceof BaseDialogItem)
-                            ((BaseDialogItem) dialogRoot.getChildAt(i)).refresh();
+                try {
+                    String action = intent == null ? null : intent.getAction();
+                    if (SettingHelper.refresh_setting.equals(action)) {
+                        if (dialogRoot == null)
+                            return;
+                        for (int i = 0; i < dialogRoot.getChildCount(); i++) {
+                            if (dialogRoot.getChildAt(i) instanceof BaseDialogItem)
+                                ((BaseDialogItem) dialogRoot.getChildAt(i)).refresh();
+                        }
+                        if (dialogProxyRoot != null)
+                            for (int i = 0; i < dialogProxyRoot.getChildCount(); i++) {
+                                if (dialogProxyRoot.getChildAt(i) instanceof BaseDialogItem)
+                                    ((BaseDialogItem) dialogProxyRoot.getChildAt(i)).refresh();
+                                else if (dialogProxyRoot.getChildAt(i) instanceof BaseDialogInputItem)
+                                    ((BaseDialogInputItem) dialogProxyRoot.getChildAt(i)).refresh();
+                            }
+                        if (dialogBeautyRoot != null)
+                            for (int i = 0; i < dialogBeautyRoot.getChildCount(); i++) {
+                                if (dialogBeautyRoot.getChildAt(i) instanceof BaseDialogItem)
+                                    ((BaseDialogItem) dialogBeautyRoot.getChildAt(i)).refresh();
+                            }
+                    } else if (SettingHelper.proxy_setting.equals(action)) {
+                        showProxyDialog(context);
+                    } else if (SettingHelper.beauty_setting.equals(action)) {
+                        showBeautyDialog(context);
+                    } else if (SettingHelper.proxy_configuration_setting.equals(action)) {
+                        showProxyConfigurationDialog(context);
                     }
-                    if (dialogProxyRoot != null)
-                        for (int i = 0; i < dialogProxyRoot.getChildCount(); i++) {
-                            if (dialogProxyRoot.getChildAt(i) instanceof BaseDialogItem)
-                                ((BaseDialogItem) dialogProxyRoot.getChildAt(i)).refresh();
-                            else if (dialogProxyRoot.getChildAt(i) instanceof BaseDialogInputItem)
-                                ((BaseDialogInputItem) dialogProxyRoot.getChildAt(i)).refresh();
-                        }
-                    if (dialogBeautyRoot != null)
-                        for (int i = 0; i < dialogBeautyRoot.getChildCount(); i++) {
-                            if (dialogBeautyRoot.getChildAt(i) instanceof BaseDialogItem)
-                                ((BaseDialogItem) dialogBeautyRoot.getChildAt(i)).refresh();
-                        }
-                } else if (intent.getAction().equals(SettingHelper.proxy_setting)) {
-                    showProxyDialog(context);
-                } else if (intent.getAction().equals(SettingHelper.beauty_setting)) {
-                    showBeautyDialog(context);
-                } else if (intent.getAction().equals(SettingHelper.sidebar_setting)) {
-                    showSidebarDialog(context);
-                } else if (intent.getAction().equals(SettingHelper.background_setting)) {
-                    showPlayerBackgroundDialog(context);
-                } else if (intent.getAction().equals(SettingHelper.proxy_configuration_setting)) {
-                    showProxyConfigurationDialog(context);
+                } catch (Throwable t) {
+                    XposedCompat.log("dolby_beta SettingHook refresh broadcast failed");
+                    XposedCompat.log(t);
                 }
             }
         };
+        broadcastReceiverContext = context;
         context.registerReceiver(broadcastReceiver, intentFilter);
+    }
+
+    private boolean isReceiverUsable(Context context) {
+        return broadcastReceiver != null && broadcastReceiverContext == context;
+    }
+
+    private boolean isRegisteredContextInactive() {
+        if (!(broadcastReceiverContext instanceof Activity))
+            return false;
+        Activity activity = (Activity) broadcastReceiverContext;
+        return activity.isFinishing() || activity.isDestroyed();
+    }
+
+    private void unregisterBroadcastReceiverFor(Context context) {
+        if (broadcastReceiver == null)
+            return;
+        if (context != null && broadcastReceiverContext != context)
+            return;
+        try {
+            if (broadcastReceiverContext != null)
+                broadcastReceiverContext.unregisterReceiver(broadcastReceiver);
+        } catch (Throwable t) {
+            XposedCompat.log("dolby_beta SettingHook unregisterReceiver: " + android.util.Log.getStackTraceString(t));
+        }
+        broadcastReceiver = null;
+        broadcastReceiverContext = null;
+    }
+
+    /** Rows are appended in argument order; dependency wiring stays with each view's construction. */
+    private static void addRows(LinearLayout root, View... rows) {
+        for (View row : rows)
+            root.addView(row);
+    }
+
+    /** Sub-pages share the same two buttons: save only, or save and restart the host app. */
+    private void showSubPageDialog(Context context, View content) {
+        new AlertDialog.Builder(context)
+                .setView(content)
+                .setCancelable(true)
+                .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
+                .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
     }
 
     private void showSettingDialog(final Context context) {
@@ -239,47 +326,22 @@ public class SettingHook {
         scrollView.addView(dialogRoot);
 
         MasterView masterView = new MasterView(context);
-        DexView dexView = new DexView(context);
-        dexView.setBaseOnView(masterView);
-        WarnView warnView = new WarnView(context);
-        warnView.setBaseOnView(masterView);
         BlackView blackView = new BlackView(context);
         blackView.setBaseOnView(masterView);
-        ListenView listenView = new ListenView(context);
-        listenView.setBaseOnView(masterView);
-        FixCommentView fixCommentView = new FixCommentView(context);
-        fixCommentView.setBaseOnView(masterView);
-        UpdateView updateView = new UpdateView(context);
-        updateView.setBaseOnView(masterView);
-        SignView signView = new SignView(context);
-        signView.setBaseOnView(masterView);
-        SignSongDailyView signSongDailyView = new SignSongDailyView(context);
-        signSongDailyView.setBaseOnView(masterView);
-        SignSongSelfView signSongSelfView = new SignSongSelfView(context);
-        signSongSelfView.setBaseOnView(masterView);
         ProxyView proxyView = new ProxyView(context);
         proxyView.setBaseOnView(masterView);
         BeautyView beautyView = new BeautyView(context);
         beautyView.setBaseOnView(masterView);
-        ResetModuleView resetModuleView = new ResetModuleView(context);
 
+        addRows(dialogRoot,
+                new TitleView(context),
+                masterView,
+                blackView,
+                proxyView,
+                beautyView,
+                new ResetModuleView(context),
+                new AboutView(context));
 
-        dialogRoot.addView(new TitleView(context));
-        dialogRoot.addView(masterView);
-        dialogRoot.addView(dexView);
-        dialogRoot.addView(warnView);
-        dialogRoot.addView(blackView);
-        dialogRoot.addView(listenView);
-        dialogRoot.addView(fixCommentView);
-        dialogRoot.addView(updateView);
-        dialogRoot.addView(signView);
-        dialogRoot.addView(signSongDailyView);
-        dialogRoot.addView(signSongSelfView);
-        dialogRoot.addView(proxyView);
-        dialogRoot.addView(beautyView);
-        dialogRoot.addView(resetModuleView);
-
-        dialogRoot.addView(new AboutView(context));
         new AlertDialog.Builder(context)
                 .setView(scrollView)
                 .setCancelable(false)
@@ -293,115 +355,46 @@ public class SettingHook {
         ProxyMasterView proxyMasterView = new ProxyMasterView(context);
         ProxyCoverView proxyCoverView = new ProxyCoverView(context);
         proxyCoverView.setBaseOnView(proxyMasterView);
-        ProxyServerView ProxyServerView = new ProxyServerView(context);
-        ProxyServerView.setBaseOnView(proxyMasterView);
+        ProxyServerView proxyServerView = new ProxyServerView(context);
+        proxyServerView.setBaseOnView(proxyMasterView);
         ProxyPriorityView proxyPriorityView = new ProxyPriorityView(context);
         proxyPriorityView.setBaseOnView(proxyMasterView);
         ProxyFlacView proxyFlacView = new ProxyFlacView(context);
         proxyFlacView.setBaseOnView(proxyMasterView);
-        ProxyGrayView proxyGrayView = new ProxyGrayView(context);
-        proxyGrayView.setBaseOnView(proxyMasterView);
         ProxyConfigurationView proxyConfigurationView = new ProxyConfigurationView(context);
         proxyConfigurationView.setBaseOnView(proxyMasterView);
 
+        addRows(dialogProxyRoot,
+                new ProxyTitleView(context),
+                proxyMasterView,
+                proxyCoverView,
+                proxyServerView,
+                proxyPriorityView,
+                proxyFlacView,
+                proxyConfigurationView);
 
-        dialogProxyRoot.addView(new ProxyTitleView(context));
-        dialogProxyRoot.addView(proxyMasterView);
-        dialogProxyRoot.addView(proxyCoverView);
-        dialogProxyRoot.addView(ProxyServerView);
-        dialogProxyRoot.addView(proxyPriorityView);
-        dialogProxyRoot.addView(proxyFlacView);
-        dialogProxyRoot.addView(proxyGrayView);
-        dialogProxyRoot.addView(proxyConfigurationView);
-
-        new AlertDialog.Builder(context)
-                .setView(dialogProxyRoot)
-                .setCancelable(true)
-                .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
-                .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
+        showSubPageDialog(context, dialogProxyRoot);
     }
+
     private void showProxyConfigurationDialog(final Context context) {
         dialogProxyRoot = new BaseDialogItem(context);
         dialogProxyRoot.setOrientation(LinearLayout.VERTICAL);
-        ProxyHttpView proxyHttpView = new ProxyHttpView(context);
-        ProxyPortView proxyPortView = new ProxyPortView(context);
-        ProxyOriginalView proxyOriginalView = new ProxyOriginalView(context);
-       // ProxyKuwoView proxykuwoView = new ProxyKuwoView(context);
-        ProxyQqView proxyqqView = new ProxyQqView(context);
-        ProxyMiguView proxymiguView = new ProxyMiguView(context);
-
-        dialogProxyRoot.addView(new ProxyConfigurationTitleView(context));
-        dialogProxyRoot.addView(proxyHttpView);
-        dialogProxyRoot.addView(proxyPortView);
-        dialogProxyRoot.addView(proxyOriginalView);
-       // dialogProxyRoot.addView(proxykuwoView);
-        dialogProxyRoot.addView(proxyqqView);
-       // dialogProxyRoot.addView(proxymiguView);
-        new AlertDialog.Builder(context)
-                .setView(dialogProxyRoot)
-                .setCancelable(true)
-                .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
-                .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
+        addRows(dialogProxyRoot,
+                new ProxyConfigurationTitleView(context),
+                new ProxyHttpView(context),
+                new ProxyPortView(context),
+                new ProxyOriginalView(context),
+                new ProxyQqView(context));
+        showSubPageDialog(context, dialogProxyRoot);
     }
-    private void showPlayerBackgroundDialog(final Context context) {
-        dialogBeautyRoot = new BaseDialogItem(context);
-        dialogBeautyRoot.setOrientation(LinearLayout.VERTICAL);
-        BackgroundMasterView backgroundMasterView = new BackgroundMasterView(context);
-        BackgroundPictureUrlView backgroundPictureUrlView = new BackgroundPictureUrlView(context);
-        BackgroundBlurRadiusView backgroundBlurRadiusView = new BackgroundBlurRadiusView(context);
 
-        dialogBeautyRoot.addView(new BackgroundTitleView(context));
-        dialogBeautyRoot.addView(backgroundMasterView);
-        dialogBeautyRoot.addView(backgroundPictureUrlView);
-        dialogBeautyRoot.addView(backgroundBlurRadiusView);
-
-        new AlertDialog.Builder(context)
-                .setView(dialogBeautyRoot)
-                .setCancelable(true)
-                .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
-                .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
-    }
     private void showBeautyDialog(final Context context) {
         dialogBeautyRoot = new BaseDialogItem(context);
         dialogBeautyRoot.setOrientation(LinearLayout.VERTICAL);
-        dialogBeautyRoot.addView(new BeautyTitleView(context));
-        dialogBeautyRoot.addView(new BeautyNightModeView(context));
-        dialogBeautyRoot.addView(new BeautyTabHideView(context));
-        dialogBeautyRoot.addView(new BeautyBannerHideView(context));
-        dialogBeautyRoot.addView(new BeautyBubbleHideView(context));
-        dialogBeautyRoot.addView(new BeautyKSongHideView(context));
-        dialogBeautyRoot.addView(new BeautyBlackHideView(context));
-        dialogBeautyRoot.addView(new BeautyRotationView(context));
-        dialogBeautyRoot.addView(new BeautyCommentHotView(context));
-        dialogBeautyRoot.addView(new PlayerBackgroundView(context));
-        dialogBeautyRoot.addView(new BeautySidebarHideView(context));
-        new AlertDialog.Builder(context)
-                .setView(dialogBeautyRoot)
-                .setCancelable(true)
-                .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
-                .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
-    }
-
-    private void showSidebarDialog(final Context context) {
-        dialogSidebarRoot = new BaseDialogItem(context);
-        dialogSidebarRoot.setOrientation(LinearLayout.VERTICAL);
-        ScrollView scrollView = new ScrollView(context);
-        scrollView.setOverScrollMode(ScrollView.OVER_SCROLL_NEVER);
-        scrollView.setVerticalScrollBarEnabled(false);
-        scrollView.addView(dialogSidebarRoot);
-
-        final LinkedHashMap<String, String> sidebarMap = SidebarEnum.getSidebarEnum();
-        final HashMap<String, Boolean> sidebarSettingMap = SettingHelper.getInstance().getSidebarSetting(sidebarMap);
-        for (Map.Entry<String, String> entry : sidebarMap.entrySet()) {
-            BeautySidebarHideItem item = new BeautySidebarHideItem(context);
-            item.initData(sidebarMap, sidebarSettingMap, entry.getKey());
-            dialogSidebarRoot.addView(item);
-        }
-
-        new AlertDialog.Builder(context)
-                .setView(scrollView)
-                .setCancelable(true)
-                .setPositiveButton("确定", (dialogInterface, i) -> refresh()).show();
+        addRows(dialogBeautyRoot,
+                new BeautyTitleView(context),
+                new BeautyTabHideView(context));
+        showSubPageDialog(context, dialogBeautyRoot);
     }
 
     private void restartApplication(Context context) {

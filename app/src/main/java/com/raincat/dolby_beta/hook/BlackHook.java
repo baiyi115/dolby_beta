@@ -1,113 +1,199 @@
 package com.raincat.dolby_beta.hook;
+import com.raincat.dolby_beta.xposed.XposedCompat;
+import com.raincat.dolby_beta.xposed.MethodHook;
+import com.raincat.dolby_beta.xposed.MethodReplacement;
+import static com.raincat.dolby_beta.xposed.XposedCompat.*;
 
 import android.content.Context;
 
-import com.google.gson.Gson;
 import com.raincat.dolby_beta.helper.ExtraHelper;
-import com.raincat.dolby_beta.model.UserPrivilegeBean;
 
 import org.json.JSONObject;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XC_MethodReplacement;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
-
-import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
-import static de.robv.android.xposed.XposedHelpers.findClass;
-
-/**
- * <pre>
- *     author : RainCat
- *     time   : 2019/10/26
- *     desc   : 黑胶，100黑胶，220音乐包
- *     version: 1.0
- * </pre>
- */
-
 public class BlackHook {
+    private static final java.util.Set<Long> loggedUserId = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    private static boolean profileListLogged;
+
     public BlackHook(Context context, int versionCode) {
         if (versionCode < 138) {
-            XposedBridge.hookAllMethods(findClass("com.netease.cloudmusic.meta.Profile", context.getClassLoader()), "setUserPoint", new XC_MethodHook() {
+            XposedCompat.hookAllMethods(findClass("com.netease.cloudmusic.meta.Profile", context.getClassLoader()), "setUserPoint", new MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
-                    if ((long) XposedHelpers.callMethod(param.thisObject, "getUserId") == Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
-                        XposedHelpers.callMethod(param.thisObject, "setVipType", 100);
-                        XposedHelpers.callMethod(param.thisObject, "setVipProExpireTime", System.currentTimeMillis() + 31536000000L);
-                        XposedHelpers.callMethod(param.thisObject, "setExpireTime", System.currentTimeMillis() + 31536000000L);
+                    if ((long) XposedCompat.callMethod(param.thisObject, "getUserId") == Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
+                        XposedCompat.callMethod(param.thisObject, "setVipType", 100);
+                        XposedCompat.callMethod(param.thisObject, "setVipProExpireTime", System.currentTimeMillis() + 31536000000L);
+                        XposedCompat.callMethod(param.thisObject, "setExpireTime", System.currentTimeMillis() + 31536000000L);
                     }
                 }
             });
 
-            //主题
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "i", XC_MethodReplacement.returnConstant(0));
+                    "i", MethodReplacement.returnConstant(0));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "j", XC_MethodReplacement.returnConstant("免费"));
+                    "j", MethodReplacement.returnConstant("免费"));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "o", XC_MethodReplacement.returnConstant(false));
+                    "o", MethodReplacement.returnConstant(false));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "s", XC_MethodReplacement.returnConstant(false));
+                    "s", MethodReplacement.returnConstant(false));
         } else {
             findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.UserPrivilege", context.getClassLoader()),
-                    "fromJson", JSONObject.class, new XC_MethodHook() {
+                    "fromJson", JSONObject.class, new MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                             super.beforeHookedMethod(param);
-                            JSONObject object = (JSONObject) param.args[0];
-                            if (object.optInt("code") == 200 && !object.isNull("data") && !object.getJSONObject("data").isNull("userId") &&
-                                    object.getJSONObject("data").optLong("userId") == Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
-                                Gson gson = new Gson();
-                                UserPrivilegeBean userPrivilegeBean = gson.fromJson(object.toString(), UserPrivilegeBean.class);
-                                userPrivilegeBean.getData().getAssociator().setExpireTime(System.currentTimeMillis() + 31536000000L);
-                                userPrivilegeBean.getData().getAssociator().setVipCode(100);
-                                userPrivilegeBean.getData().getMusicPackage().setExpireTime(System.currentTimeMillis() + 31536000000L);
-                                userPrivilegeBean.getData().getMusicPackage().setVipCode(220);
-                                userPrivilegeBean.getData().setRedVipAnnualCount(1);
-                                userPrivilegeBean.getData().setRedVipLevel(9);
-                                object = new JSONObject(gson.toJson(userPrivilegeBean));
+                            try {
+                                JSONObject object = (JSONObject) param.args[0];
+                                if (object == null || object.optInt("code") != 200 || object.isNull("data"))
+                                    return;
+                                JSONObject data = object.getJSONObject("data");
+                                if (data.isNull("userId"))
+                                    return;
+                                long userId = data.optLong("userId");
+                                if (userId != Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID)))
+                                    return;
+
+                                long expireTime = System.currentTimeMillis() + 31536000000L;
+                                JSONObject associator = data.optJSONObject("associator");
+                                if (associator == null) {
+                                    associator = new JSONObject();
+                                    data.put("associator", associator);
+                                }
+                                associator.put("expireTime", expireTime);
+                                associator.put("vipCode", 100);
+                                associator.put("vipLevel", 9);
+
+                                JSONObject musicPackage = data.optJSONObject("musicPackage");
+                                if (musicPackage == null) {
+                                    musicPackage = new JSONObject();
+                                    data.put("musicPackage", musicPackage);
+                                }
+                                musicPackage.put("expireTime", expireTime);
+                                musicPackage.put("vipCode", 220);
+
+                                data.put("redVipAnnualCount", 1);
+                                data.put("redVipLevel", 9);
                                 param.args[0] = object;
+                                if (loggedUserId.add(userId))
+                                    logInfo("BlackHook: local privilege patched, userId=" + userId);
+                            } catch (Throwable t) {
+                                log(t);
                             }
                         }
                     });
 
-            //主题
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "getPoints", XC_MethodReplacement.returnConstant(0));
+                    "getPoints", MethodReplacement.returnConstant(0));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "getPrice", XC_MethodReplacement.returnConstant("免费"));
+                    "getPrice", MethodReplacement.returnConstant("免费"));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "isVip", XC_MethodReplacement.returnConstant(false));
+                    "isVip", MethodReplacement.returnConstant(false));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
-                    "isDigitalAlbum", XC_MethodReplacement.returnConstant(false));
+                    "isDigitalAlbum", MethodReplacement.returnConstant(false));
+
+            Class<?> userPrivilegeClass = findClass("com.netease.cloudmusic.meta.virtual.UserPrivilege", context.getClassLoader());
+
+            findAndHookMethod(userPrivilegeClass, "fromJsonForProfileList",
+                    JSONObject.class, long.class, new MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            super.beforeHookedMethod(param);
+                            try {
+                                long userId = (long) param.args[1];
+                                if (userId != Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID)))
+                                    return;
+                                JSONObject object = (JSONObject) param.args[0];
+                                if (object == null)
+                                    return;
+                                long expireTime = System.currentTimeMillis() + 31536000000L;
+                                patchProfilePrivilege(object, "associator", 100, expireTime);
+                                patchProfilePrivilege(object, "musicPackage", 220, expireTime);
+                                object.put("redVipAnnualCount", 1);
+                                object.put("redVipLevel", 9);
+                                param.args[0] = object;
+                                if (!profileListLogged) {
+                                    profileListLogged = true;
+                                    logInfo("BlackHook: local profile-list privilege patched, userId=" + userId);
+                                }
+                            } catch (Throwable t) {
+                                log(t);
+                            }
+                        }
+                    });
+
+            XposedCompat.hookAllMethods(userPrivilegeClass, "isBlackVip", currentUserHook(true));
+            XposedCompat.hookAllMethods(userPrivilegeClass, "isWhateverVip", currentUserHook(true));
+            XposedCompat.hookAllMethods(userPrivilegeClass, "isWhateverMusicPackage", currentUserHook(true));
         }
 
-        //音质切换
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
-                "isVipFee", XC_MethodReplacement.returnConstant(false));
+                "isVipFee", MethodReplacement.returnConstant(false));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
-                "getPlayMaxLevel", XC_MethodReplacement.returnConstant(999000));
+                "getPlayMaxLevel", MethodReplacement.returnConstant(999000));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
-                "getDownMaxLevel", XC_MethodReplacement.returnConstant(999000));
+                "getDownMaxLevel", MethodReplacement.returnConstant(999000));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
-                "getFee", XC_MethodReplacement.returnConstant(0));
+                "getFee", MethodReplacement.returnConstant(0));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
-                "getPayed", XC_MethodReplacement.returnConstant(0));
-        XposedBridge.hookAllMethods(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
-                "isFee", XC_MethodReplacement.returnConstant(false));
+                "getPayed", MethodReplacement.returnConstant(0));
+        XposedCompat.hookAllMethods(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
+                "isFee", MethodReplacement.returnConstant(false));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.SongPrivilege", context.getClassLoader()),
-                "canShare", XC_MethodReplacement.returnConstant(true));
+                "canShare", MethodReplacement.returnConstant(true));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.SongPrivilege", context.getClassLoader()),
-                "getFreeLevel", XC_MethodReplacement.returnConstant(999000));
+                "getFreeLevel", MethodReplacement.returnConstant(999000));
+        findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.SongPrivilege", context.getClassLoader()),
+                "getPlayMaxbr", MethodReplacement.returnConstant(999000));
+        findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.SongPrivilege", context.getClassLoader()),
+                "getDownloadMaxbr", MethodReplacement.returnConstant(999000));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
-                "getFlag", new XC_MethodHook() {
+                "getFlag", new MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
-                        //云盘歌曲&运算0x8不等于0
-                        param.setResult(((int) param.getResult() & 0x8) == 0 ? 0 : param.getResult());
+
+                        param.setResult((int) param.getResult() & 0x8);
                     }
                 });
+    }
+
+    private static void patchProfilePrivilege(JSONObject object, String name, int vipCode, long expireTime) throws Exception {
+        JSONObject privilege = object.optJSONObject(name);
+        if (privilege == null) {
+            privilege = new JSONObject();
+            object.put(name, privilege);
+        }
+        privilege.put("expireTime", expireTime);
+        privilege.put("vipCode", vipCode);
+        privilege.put("rights", true);
+    }
+
+    private static MethodHook currentUserHook(final Object value) {
+        return new MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                Object target = param.thisObject;
+                if (target == null && param.args != null && param.args.length == 1
+                        && param.args[0] != null
+                        && "com.netease.cloudmusic.meta.virtual.UserPrivilege".equals(param.args[0].getClass().getName()))
+                    target = param.args[0];
+                if (!isCurrentUser(target))
+                    return;
+                param.setResult(value);
+            }
+        };
+    }
+
+    private static boolean isCurrentUser(Object object) {
+        if (object == null)
+            return false;
+        try {
+            Object userId = XposedCompat.callMethod(object, "getUserId");
+            return userId instanceof Long
+                    && (long) userId == Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID));
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 }

@@ -10,25 +10,7 @@ import android.util.AttributeSet;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/09/09
- *     desc   : 代理端口
- *     version: 1.0
- * </pre>
- */
-
 public class ProxyPortView extends BaseDialogInputItem {
-    public ProxyPortView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public ProxyPortView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public ProxyPortView(Context context) {
         super(context);
     }

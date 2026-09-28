@@ -20,20 +20,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 
-/**
- * Http
- * Created by Administrator on 2018/3/29 0029.
- */
 public class Http {
     private Request mRequest = new Request();
     private static ExecutorService exec = Executors.newFixedThreadPool(10);
 
-    /**
-     * @param method GET/POST
-     * @param url    地址
-     * @param param  参数
-     * @param header 请求头
-     */
     public Http(final String method, final String url, final HashMap<String, Object> header, final String param) {
         mRequest.header = header;
         mRequest.method = method;
@@ -41,12 +31,6 @@ public class Http {
         mRequest.url = url;
     }
 
-    /**
-     * @param method GET/POST
-     * @param url    地址
-     * @param param  参数
-     * @param header 请求头
-     */
     public Http(final String method, final String url, final HashMap<String, Object> param, final HashMap<String, Object> header) {
         StringBuilder stringBuilder = new StringBuilder();
         if (param != null)
@@ -96,17 +80,17 @@ public class Http {
         HttpURLConnection connection = null;
         InputStream is = null;
         try {
-            URL url = new URL(request.url);// 获得URL对象
-            connection = (HttpURLConnection) url.openConnection();// 获得HttpURLConnection对象
-            connection.setRequestMethod(request.method);// 请求方式POST
-            connection.setUseCaches(false);// 不使用缓存
-            connection.setConnectTimeout(request.timeout);// 设置超时时间
-            connection.setReadTimeout(request.timeout);// 设置读取超时时间
-            connection.setInstanceFollowRedirects(true);// 自动执行 http 重定向
+            URL url = new URL(request.url);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod(request.method);
+            connection.setUseCaches(false);
+            connection.setConnectTimeout(request.timeout);
+            connection.setReadTimeout(request.timeout);
+            connection.setInstanceFollowRedirects(true);
             if (request.method.equals("POST")) {
-                connection.setDoInput(true);// 设置是否从httpUrlConnection读入，默认情况下是true;
+                connection.setDoInput(true);
                 connection.setDoOutput(true);
-                connection.setChunkedStreamingMode(0);//设置超时不自动重试
+                connection.setChunkedStreamingMode(0);
             }
             connection.setRequestProperty("Charset", "UTF-8");
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
@@ -125,7 +109,6 @@ public class Http {
                 out.close();
             }
 
-            // 响应码是否为200
             if (connection.getResponseCode() == HttpURLConnection.HTTP_OK)
                 is = connection.getInputStream();
             else {
@@ -133,9 +116,8 @@ public class Http {
                 errorCode = connection.getResponseCode();
             }
 
-            // 获得输入流
             BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-            // 包装字节流为字符流
+
             StringBuilder response = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {

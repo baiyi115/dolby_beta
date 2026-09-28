@@ -8,25 +8,7 @@ import android.util.AttributeSet;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
 
-/**
- * <pre>
- *     author : Luoxingran
- *     e-mail : szb5845201314@gmail.com
- *     time   : 2021/12/14
- *     desc   : http代理模式
- *     version: 1.0
- * </pre>
- */
-
 public class ProxyHttpView extends BaseDialogInputItem {
-    public ProxyHttpView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public ProxyHttpView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public ProxyHttpView(Context context) {
         super(context);
     }

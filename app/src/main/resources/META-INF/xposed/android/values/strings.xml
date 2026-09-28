@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="module_name">杜比大喇叭β</string>
+    <string name="module_description">网易云音乐音源代理模块，已适配 9.5.81（libxposed API 102 + DexKit）</string>
+</resources>

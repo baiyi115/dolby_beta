@@ -5,25 +5,7 @@ import android.util.AttributeSet;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.view.BaseDialogItem;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/10/22
- *     desc   : 侧边栏精简
- *     version: 1.0
- * </pre>
- */
-
 public class ProxyConfigurationView extends BaseDialogItem {
-    public ProxyConfigurationView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public ProxyConfigurationView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public ProxyConfigurationView(Context context) {
         super(context);
     }

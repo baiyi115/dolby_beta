@@ -7,25 +7,7 @@ import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.utils.Tools;
 import com.raincat.dolby_beta.view.BaseDialogItem;
 
-/**
- * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/13
- *     desc   : 总开关
- *     version: 1.0
- * </pre>
- */
-
 public class MasterView extends BaseDialogItem {
-    public MasterView(Context context, AttributeSet attrs, int defStyle) {
-        super(context, attrs, defStyle);
-    }
-
-    public MasterView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-
     public MasterView(Context context) {
         super(context);
     }
