@@ -21,6 +21,7 @@ public class XposedCompat {
     private static volatile XposedInterface xp;
     private static volatile String moduleApkPath;
     private static final java.util.Map<String, int[]> dupCounter = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int DUP_COUNTER_LIMIT = 512;
     private static final java.util.concurrent.atomic.AtomicInteger hookInstalled = new java.util.concurrent.atomic.AtomicInteger();
     private static final java.util.List<String> hookFailures = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
@@ -92,6 +93,10 @@ public class XposedCompat {
         XposedInterface i = xp;
         int[] c = dupCounter.get(message);
         if (c == null) {
+            // Bounded on purpose: stack-trace strings are used as keys and behave like unique
+            // values, so the map previously grew for the whole process lifetime.
+            if (dupCounter.size() >= DUP_COUNTER_LIMIT)
+                dupCounter.clear();
             dupCounter.put(message, new int[]{1});
             if (i != null)
                 i.log(Log.ERROR, TAG, message);
@@ -289,17 +294,6 @@ public class XposedCompat {
             }
         }
         return out.toArray(new Method[0]);
-    }
-
-    public static Field findFirstFieldByExactType(Class<?> clazz, Class<?> type) {
-        for (Class<?> c = clazz; c != null; c = c.getSuperclass()) {
-            for (Field field : c.getDeclaredFields())
-                if (field.getType() == type) {
-                    field.setAccessible(true);
-                    return field;
-                }
-        }
-        return null;
     }
 
     // ------------------------------------------------------------------ resolution internals

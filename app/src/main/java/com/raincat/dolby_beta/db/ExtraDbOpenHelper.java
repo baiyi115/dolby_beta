@@ -4,6 +4,8 @@ import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import com.raincat.dolby_beta.xposed.XposedCompat;
+
 public class ExtraDbOpenHelper extends SQLiteOpenHelper {
     private static final int DATABASE_VERSION = 1;
     private static ExtraDbOpenHelper instance;
@@ -44,7 +46,8 @@ public class ExtraDbOpenHelper extends SQLiteOpenHelper {
                 SQLiteDatabase db = instance.getWritableDatabase();
                 db.close();
             } catch (Exception e) {
-                e.printStackTrace();
+                XposedCompat.log("ExtraDbOpenHelper close failed");
+                XposedCompat.log(e);
             }
             instance = null;
         }

@@ -5,14 +5,12 @@ import com.raincat.dolby_beta.xposed.MethodHook;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.Build;
 import android.os.Environment;
 
+import com.raincat.dolby_beta.helper.AdCleanupHelper;
 import com.raincat.dolby_beta.helper.ClassHelper;
 import com.raincat.dolby_beta.helper.ExtraHelper;
-import com.raincat.dolby_beta.helper.FileHelper;
-import com.raincat.dolby_beta.helper.NotificationHelper;
+import com.raincat.dolby_beta.helper.ProcessBroadcast;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.hook.AdAndUpdateHook;
 import com.raincat.dolby_beta.hook.BlackHook;
@@ -25,7 +23,6 @@ import com.raincat.dolby_beta.hook.SettingHook;
 import com.raincat.dolby_beta.hook.UserProfileHook;
 import com.raincat.dolby_beta.utils.Tools;
 
-import java.io.File;
 import java.io.IOException;
 
 public class HookOther {
@@ -34,12 +31,6 @@ public class HookOther {
 
     public boolean playProcessInit = false;
     public boolean mainProcessInit = false;
-
-    private final String msg_hook_play_process = "hookPlayProcess";
-
-    private final String msg_play_process_init_finish = "playProcessInitFinish";
-
-    public static final String msg_send_notification = "sendNotification";
 
     public HookOther(ClassLoader classLoader, String packageName) {
         PACKAGE_NAME=packageName;
@@ -72,7 +63,14 @@ public class HookOther {
 
                             if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
                                 new BlackHook(context, versionCode);
-                                deleteAdAndTinker();
+                                // Never let ad/tinker cleanup abort the rest of the install: this
+                                // runs inside attachBaseContext, so a throw would also skip
+                                // AdAndUpdateHook, the deferred hooks and the play-process handshake.
+                                try {
+                                    deleteAdAndTinker();
+                                } catch (Throwable t) {
+                                    XposedCompat.noteHookFailed("deleteAdAndTinker", t);
+                                }
                             }
 
                             new AdAndUpdateHook(context, versionCode);
@@ -88,69 +86,48 @@ public class HookOther {
                                 new CdnHook(context, versionCode);
                                 mainProcessInit = true;
                                 if (mainProcessInit && playProcessInit)
-                                    context.sendBroadcast(new Intent(msg_hook_play_process));
+                                    ProcessBroadcast.sendHookPlayProcess(context);
                             });
-                            IntentFilter intentFilter = new IntentFilter();
-                            intentFilter.addAction(msg_play_process_init_finish);
-                            intentFilter.addAction(msg_send_notification);
                             context.registerReceiver(new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
-                                    if (msg_play_process_init_finish.equals(intent.getAction())) {
+                                    String action = intent.getAction();
+                                    if (ProcessBroadcast.PLAY_PROCESS_READY.equals(action)) {
                                         playProcessInit = true;
                                         if (mainProcessInit && playProcessInit)
-                                            context.sendBroadcast(new Intent(msg_hook_play_process));
-                                    } else if (msg_send_notification.equals(intent.getAction())) {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-                                            NotificationHelper.getInstance(context).sendUnLockNotification(context, intent.getIntExtra("code", 0x10),
-                                                    intent.getStringExtra("title"), intent.getStringExtra("title"), intent.getStringExtra("message"));
+                                            ProcessBroadcast.sendHookPlayProcess(context);
+                                    } else if (ProcessBroadcast.SEND_NOTIFICATION.equals(action)) {
+                                        ProcessBroadcast.handleNotification(context, intent);
                                         XposedCompat.logInfo(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
                                     }
                                 }
-                            }, intentFilter);
+                            }, ProcessBroadcast.mainProcessFilter());
                         } else if (processName.equals(PACKAGE_NAME + ":play") && SettingHelper.getInstance().getSetting(SettingHelper.master_key)) {
 
                             new ProxyHook(context, true);
-                            IntentFilter intentFilter = new IntentFilter();
-                            intentFilter.addAction(msg_hook_play_process);
                             context.registerReceiver(new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
-                                    if (msg_hook_play_process.equals(intent.getAction())) {
+                                    if (ProcessBroadcast.HOOK_PLAY_PROCESS.equals(intent.getAction())) {
                                         ClassHelper.getCacheClassList(context, versionCode, () -> {
                                             new EAPIHook(context);
                                             new CdnHook(context, versionCode);
                                         });
                                     }
                                 }
-                            }, intentFilter);
-                            context.sendBroadcast(new Intent(msg_play_process_init_finish));
+                            }, ProcessBroadcast.playProcessFilter());
+                            ProcessBroadcast.sendPlayProcessReady(context);
                         }
                     }
                 });
     }
 
     private void deleteAdAndTinker() throws IOException {
+        String adCache = Environment.getExternalStorageDirectory() + "/netease/cloudmusic/lite/Ad";
+        if (PACKAGE_NAME.equals("com.hihonor.cloudmusic"))
+            adCache = Environment.getExternalStorageDirectory() + "/hihonor/cloudmusic/Ad";
 
-        String CACHE_PATH3 = Environment.getExternalStorageDirectory() + "/netease/cloudmusic/lite/Ad";
-        if(PACKAGE_NAME.equals("com.hihonor.cloudmusic"))
-        {
-            CACHE_PATH3 = Environment.getExternalStorageDirectory() + "/hihonor/cloudmusic/Ad";
-        }
-        String CACHE_PATH4 = Environment.getExternalStorageDirectory() + "/Android/data/"+PACKAGE_NAME+"cache/Ad";
-        String TINKER_PATH = "data/data/" + PACKAGE_NAME + "/tinker";
-
-        FileHelper.deleteDirectory(CACHE_PATH3);
-        FileHelper.deleteDirectory(CACHE_PATH4);
-
-        File tinkerFile = new File(TINKER_PATH);
-        if (tinkerFile.exists() && tinkerFile.isDirectory())
-            FileHelper.deleteDirectory(TINKER_PATH);
-        if (!tinkerFile.exists())
-            tinkerFile.createNewFile();
-
-        String command = "chmod 000 " + tinkerFile.getAbsolutePath();
-        Runtime runtime = Runtime.getRuntime();
-        runtime.exec(command);
+        AdCleanupHelper.deleteAdAndTinker(PACKAGE_NAME, adCache,
+                AdCleanupHelper.externalAdCache(PACKAGE_NAME));
     }
 }

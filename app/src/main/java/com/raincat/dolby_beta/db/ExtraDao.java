@@ -40,12 +40,23 @@ public class ExtraDao {
         String extra = "-1";
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         if (db.isOpen()) {
-            Cursor cursor = db.rawQuery("select * from " + TABLE_NAME + " where " + EXTRA_KEY + " = '" + key + "'", null);
-            if (cursor.moveToNext())
-                extra = cursor.getString(cursor.getColumnIndex(EXTRA_VALUE));
-            cursor.close();
+            Cursor cursor = null;
+            try {
+                cursor = db.rawQuery("select * from " + TABLE_NAME + " where " + EXTRA_KEY + " = '" + key + "'", null);
+                if (cursor.moveToNext()) {
+                    String value = cursor.getString(cursor.getColumnIndex(EXTRA_VALUE));
+                    if (value != null)
+                        extra = value;
+                }
+            } finally {
+                // The cursor used to leak whenever getString()/getColumnIndex() threw.
+                if (cursor != null)
+                    cursor.close();
+                db.close();
+            }
+        } else {
+            db.close();
         }
-        db.close();
         return extra;
     }
 }

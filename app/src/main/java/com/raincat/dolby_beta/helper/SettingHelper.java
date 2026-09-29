@@ -116,11 +116,15 @@ public class SettingHelper {
     }
 
     public boolean getSetting(String key) {
-        return settingMap.get(key);
+        // Unboxing here threw for any key that has no refreshSetting() row (the pure UI keys such as
+        // proxy_cover_key are constants only), which is a crash waiting for the first caller to read
+        // one while its checkbox is visible.
+        Boolean value = settingMap.get(key);
+        return value != null && value;
     }
 
     public boolean isEnable(String key) {
-        return settingMap.get(master_key) && settingMap.get(key);
+        return getSetting(master_key) && getSetting(key);
     }
 
     private void deleteSetting(String key) {

@@ -69,22 +69,29 @@ public class HideTabHook {
 
         if (versionCode >= 8000010 && versionCode < 9000000) {
             Class<?> bottomTabViewClass = ClassHelper.BottomTabView.getClazz(context);
-            if (bottomTabViewClass != null) {
-                findAndHookMethod(bottomTabViewClass, ClassHelper.BottomTabView.getTabInitMethod(context).getName(), new MethodHook() {
+            Method tabInitMethod = bottomTabViewClass == null ? null : ClassHelper.BottomTabView.getTabInitMethod(context);
+            Method tabRefreshMethod = bottomTabViewClass == null ? null : ClassHelper.BottomTabView.getTabRefreshMethod(context);
+            if (bottomTabViewClass != null && tabInitMethod != null) {
+                findAndHookMethod(bottomTabViewClass, tabInitMethod.getName(), new MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
                         param.setResult(pinnedTabCodes());
                     }
                 });
-
-                findAndHookMethod(bottomTabViewClass, ClassHelper.BottomTabView.getTabRefreshMethod(context).getName(), List.class, new MethodHook() {
+            } else {
+                XposedCompat.logError("HideTabHook: bottom tab init method not found");
+            }
+            if (bottomTabViewClass != null && tabRefreshMethod != null) {
+                findAndHookMethod(bottomTabViewClass, tabRefreshMethod.getName(), List.class, new MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                         super.beforeHookedMethod(param);
                         param.args[0] = pinnedTabCodes();
                     }
                 });
+            } else {
+                XposedCompat.logError("HideTabHook: bottom tab refresh method not found");
             }
         }
     }

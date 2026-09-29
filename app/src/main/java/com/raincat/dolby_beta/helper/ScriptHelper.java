@@ -7,7 +7,6 @@ import android.content.res.AssetManager;
 import android.text.TextUtils;
 
 import com.raincat.dolby_beta.BuildConfig;
-import com.raincat.dolby_beta.Hook;
 import com.raincat.dolby_beta.net.HTTPSTrustManager;
 import com.raincat.dolby_beta.utils.Tools;
 import com.raincat.dolby_beta.xposed.XposedCompat;
@@ -16,9 +15,11 @@ import com.stericson.RootShell.execution.Command;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.channels.FileLock;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -58,21 +59,63 @@ public class ScriptHelper {
         neteaseContext = context;
         boolean scriptChanged = !SCRIPT_ASSET_VERSION.equals(ExtraHelper.getExtraDate(ExtraHelper.SCRIPT_ASSET_VERSION))
                 || !(BuildConfig.VERSION_CODE + "").equals(ExtraHelper.getExtraDate(ExtraHelper.APP_VERSION));
-        if (cover || !unblockFile.exists() || scriptChanged) {
+        if (cover || !unblockFile.exists() || scriptChanged)
+            releaseScript(context);
 
-            if (extractScript(context) && verifyScript()) {
-                Command auth = new Command(0, "cd " + getScriptPath(context), "chmod 0777 *");
-                Tools.shell(auth);
-                ExtraHelper.setExtraDate(ExtraHelper.APP_VERSION, BuildConfig.VERSION_CODE);
-                ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_ASSET_VERSION, SCRIPT_ASSET_VERSION);
-                XposedCompat.logInfo("UNM script released: " + getScriptPath(context));
-            } else {
-                XposedCompat.logError("UNM script release failed, keep current files and retry on next start");
-            }
-        }
         if (TextUtils.isEmpty(nodeLibPath)) {
             nodeLibPath = TextUtils.isEmpty(modulePath) ? "" : modulePath.substring(0, modulePath.lastIndexOf('/'));
             nodeLibPath = "export PATH=$PATH:" + nodeLibPath + "/lib/arm64:" + modulePath + "!/lib/arm64-v8a:" + context.getApplicationInfo().nativeLibraryDir;
+        }
+    }
+
+    private static final Object EXTRACT_LOCK = new Object();
+
+    /**
+     * The main process and {@code :play} share one files dir and both call this during startup, so
+     * extraction has to be serialized across processes rather than only across threads: two
+     * concurrent runs wrote the same .unm_script.tmp and unzipped into the same directory. A lock
+     * file next to the script works because both processes run under the same uid.
+     */
+    private static void releaseScript(Context context) {
+        synchronized (EXTRACT_LOCK) {
+            RandomAccessFile lockFile = null;
+            FileLock lock = null;
+            try {
+                File dir = new File(getScriptPath(context));
+                if (!dir.exists() && !dir.mkdirs())
+                    XposedCompat.logError("UNM script dir unavailable: " + dir);
+                lockFile = new RandomAccessFile(new File(dir, ".unm.lock"), "rw");
+                lock = lockFile.getChannel().tryLock();
+                if (lock == null) {
+                    // Another process is extracting right now; it publishes the same asset version,
+                    // and a failure there is retried on the next start.
+                    XposedCompat.logInfo("UNM script extraction in progress in another process, skipping");
+                } else if (extractScript(context) && verifyScript()) {
+                    Command auth = new Command(0, "cd " + getScriptPath(context), "chmod 0777 *");
+                    Tools.shell(auth);
+                    ExtraHelper.setExtraDate(ExtraHelper.APP_VERSION, BuildConfig.VERSION_CODE);
+                    ExtraHelper.setExtraDate(ExtraHelper.SCRIPT_ASSET_VERSION, SCRIPT_ASSET_VERSION);
+                    XposedCompat.logInfo("UNM script released: " + getScriptPath(context));
+                } else {
+                    XposedCompat.logError("UNM script release failed, keep current files and retry on next start");
+                }
+            } catch (Throwable t) {
+                XposedCompat.log("UNM script release threw");
+                XposedCompat.log(t);
+            } finally {
+                if (lock != null) {
+                    try {
+                        lock.release();
+                    } catch (Throwable ignored) {
+                    }
+                }
+                if (lockFile != null) {
+                    try {
+                        lockFile.close();
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
         }
     }
 
@@ -178,6 +221,25 @@ public class ScriptHelper {
         return sources.length() > 0 ? sources.toString() : "pyncmd kuwo bodian";
     }
 
+    /**
+     * Cookies are interpolated straight into a shell command, so anything that could terminate the
+     * surrounding double quotes (or start a substitution) has to go. Real cookie values only use
+     * the characters kept here, so this is lossless for them and neutralises a pasted payload.
+     */
+    private static String sanitizeShellValue(String value) {
+        if (value == null)
+            return "";
+        StringBuilder out = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                    || c == '=' || c == ';' || c == '_' || c == '-' || c == '.' || c == ':'
+                    || c == '+' || c == '/' || c == '*' || c == '%' || c == ',' || c == '~' || c == ' ')
+                out.append(c);
+        }
+        return out.toString();
+    }
+
     public static void startScript() {
         final int port = SettingHelper.getInstance().getProxyPort();
         XposedCompat.logInfo("UNM local script starting: scriptPath=" + scriptPath
@@ -189,7 +251,8 @@ public class ScriptHelper {
                         + "&&export SIGN_CERT=\"%s/server.crt\"&&export SIGN_KEY=\"%s/server.key\""
                         + "&&libnode.so app.js -a 127.0.0.1 -e - -o %s -p %s",
                 SettingHelper.getInstance().getSetting(SettingHelper.proxy_flac_key), SettingHelper.getInstance().getSetting(SettingHelper.proxy_priority_key) ? "256000" : "96000",
-                SettingHelper.getInstance().getQqCookie(), SettingHelper.getInstance().getMiguCookie(),
+                sanitizeShellValue(SettingHelper.getInstance().getQqCookie()),
+                sanitizeShellValue(SettingHelper.getInstance().getMiguCookie()),
                 scriptPath, scriptPath,
                 sanitizeSources(SettingHelper.getInstance().getProxyOriginal()),
                 SettingHelper.getInstance().getProxyPort() + ":" + (SettingHelper.getInstance().getProxyPort() + 1));
@@ -214,7 +277,7 @@ public class ScriptHelper {
                         XposedCompat.logError("UNM source match failure: " + line.trim());
                         return;
                     }
-                    Intent intent = new Intent(Hook.msg_send_notification);
+                    Intent intent = new Intent(ProcessBroadcast.SEND_NOTIFICATION);
                     intent.putExtra("message", line);
                     intent.putExtra("title", "脚本产生如下错误信息，若脚本因此无法运行请提issue");
                     if (neteaseContext != null)

@@ -41,6 +41,7 @@ public final class ProxyTransport {
     private static boolean cronetProxyLogged;
     private static final Map<String, Object> PROXIED_OKHTTP_CLIENTS =
             Collections.synchronizedMap(new HashMap<>());
+    private static final int PROXIED_CLIENT_LIMIT = 4;
     private static final Map<Object, Object> ORIGINAL_PROXIES =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<Object, Object> ORIGINAL_SSL_FACTORIES =
@@ -91,8 +92,12 @@ public final class ProxyTransport {
                 logSidebarRequestOnce(request);
                 if (!isMediaRequest(request))
                     return;
-                param.args[1] = removeTrialParams(request);
                 logProxyStateForRequest();
+                // Only rewrite the request while the proxy is actually serving. setProxy() is still
+                // called unconditionally: its inactive branch restores the client's original
+                // proxy/SSL fields, which is what un-breaks networking after the switch is turned off.
+                if (isProxyActive())
+                    param.args[1] = removeTrialParams(request);
                 try {
                     setProxy(context, client);
                 } catch (Throwable t) {
@@ -463,6 +468,14 @@ public final class ProxyTransport {
             XposedCompat.callMethod(builder, "proxy",
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port)));
 
+            // This client only replays the player request against the local/node proxy. Without a
+            // call timeout a black-holed proxy would block the hooked response thread until the
+            // platform default, so bound every stage explicitly.
+            XposedCompat.callMethod(builder, "connectTimeout", 5L, java.util.concurrent.TimeUnit.SECONDS);
+            XposedCompat.callMethod(builder, "readTimeout", 10L, java.util.concurrent.TimeUnit.SECONDS);
+            XposedCompat.callMethod(builder, "writeTimeout", 10L, java.util.concurrent.TimeUnit.SECONDS);
+            XposedCompat.callMethod(builder, "callTimeout", 15L, java.util.concurrent.TimeUnit.SECONDS);
+
             SSLSocketFactory socketFactory = ScriptHelper.getSSLSocketFactory(context);
             if (socketFactory != null) {
                 XposedCompat.callMethod(builder, "sslSocketFactory",
@@ -472,7 +485,13 @@ public final class ProxyTransport {
             Object client = XposedCompat.callMethod(builder, "build");
             if (client == null)
                 throw new IllegalStateException("proxied OkHttpClient build failed");
-            PROXIED_OKHTTP_CLIENTS.put(key, client);
+            // Keyed by host:port, so a user editing the proxy setting would otherwise accumulate one
+            // live OkHttpClient (with its dispatcher threads) per distinct value.
+            synchronized (PROXIED_OKHTTP_CLIENTS) {
+                if (PROXIED_OKHTTP_CLIENTS.size() >= PROXIED_CLIENT_LIMIT)
+                    PROXIED_OKHTTP_CLIENTS.clear();
+                PROXIED_OKHTTP_CLIENTS.put(key, client);
+            }
             XposedCompat.logInfo("ProxyHook proxy client ready: " + key);
             return client;
         }

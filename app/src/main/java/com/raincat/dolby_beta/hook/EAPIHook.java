@@ -11,16 +11,18 @@ import com.raincat.dolby_beta.xposed.XposedCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.IOException;
-import java.net.URLDecoder;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-
 import static com.raincat.dolby_beta.xposed.XposedCompat.findClassIfExists;
 
 public class EAPIHook {
+    /**
+     * Upper bound for the response body we are willing to buffer. This runs on every /api/ and
+     * /eapi/ response while the proxy or black-VIP switch is on, and the previous 20 MB peek could
+     * buffer that much per in-flight request in both the main and :play processes.
+     */
+    private static final long MAX_BODY_BYTES = 2 * 1024 * 1024L;
+
     private final Context context;
-    private Class<?> bufferClass, mediaTypeClass, responseBodyClass;
+    private Class<?> mediaTypeClass, responseBodyClass;
 
     public EAPIHook(final Context context) {
         this.context = context;
@@ -76,17 +78,36 @@ public class EAPIHook {
                     && !SettingHelper.getInstance().isEnable(SettingHelper.proxy_master_key))
                 return;
 
+            if (!needsFullBody(path))
+                return;
+
+            long declaredLength = contentLength(response);
+            if (declaredLength > MAX_BODY_BYTES) {
+                XposedCompat.logDebug("EAPIHook skipped oversized body: " + path
+                        + " (" + declaredLength + "B)");
+                return;
+            }
+
             XposedCompat.logDebug("EAPIHook matched path: " + path);
-            String original;
+            String raw;
             try {
-                Object peekBody = XposedCompat.callMethod(response, "peekBody", 20 * 1024 * 1024L);
-                original = (String) XposedCompat.callMethod(peekBody, "string");
+                Object peekBody = XposedCompat.callMethod(response, "peekBody", MAX_BODY_BYTES);
+                raw = (String) XposedCompat.callMethod(peekBody, "string");
             } catch (Throwable t) {
                 XposedCompat.log("EAPIHook peek body failed: " + path);
                 XposedCompat.log(t);
                 return;
             }
-            original = original == null ? "" : original.trim();
+            if (raw == null)
+                return;
+            if (raw.length() >= MAX_BODY_BYTES) {
+
+                // peekBody() returned exactly the cap, so the real body is longer. Parsing the
+                // truncated JSON cannot succeed, and reading on would defeat the memory bound.
+                XposedCompat.logDebug("EAPIHook body hit the size cap, skipped: " + path);
+                return;
+            }
+            String original = raw.trim();
             if (TextUtils.isEmpty(original) || original.charAt(0) != '{')
                 return;
 
@@ -146,6 +167,29 @@ public class EAPIHook {
         return path.contains("/eapi/") || path.contains("/api/");
     }
 
+    /**
+     * Mirrors {@link #modifyByPath}: only endpoints that are actually rewritten may have their body
+     * read. Everything else returns before peekBody(), which is what keeps ordinary API traffic
+     * (banners, playlists, comments, ...) off the buffering path entirely.
+     */
+    private static boolean needsFullBody(String path) {
+        return path.contains("song/enhance/player/url")
+                || path.contains("song/enhance/download/url")
+                || path.contains("sound/mobile")
+                || path.contains("page=audio_effect");
+    }
+
+    /** Declared {@code Content-Length}, or -1 when the response does not advertise one. */
+    private static long contentLength(Object response) {
+        try {
+            Object value = XposedCompat.callMethod(response, "header", "Content-Length");
+            if (value instanceof String)
+                return Long.parseLong(((String) value).trim());
+        } catch (Throwable ignored) {
+        }
+        return -1;
+    }
+
     private String requestPath(Object request) {
         if (request == null)
             return "";
@@ -158,42 +202,25 @@ public class EAPIHook {
         if (path.contains("song/enhance/player/url")) {
             return EAPIHelper.modifyPlayer(original);
         } else if (path.contains("song/enhance/download/url")) {
-            JSONObject jsonObject = new JSONObject(original);
-            JSONObject object = jsonObject.getJSONObject("data");
-            JSONArray array = new JSONArray();
-            array.put(object);
-            jsonObject.put("data", array);
-            return EAPIHelper.modifyPlayer(jsonObject.toString())
-                    .replace("[", "").replace("]", "");
+            // modifyPlayer() needs an array, so the single object is wrapped and unwrapped again.
+            // The old code stripped every "[" / "]" from the serialized JSON instead, which also
+            // removed brackets belonging to nested arrays and string values.
+            JSONObject wrapped = new JSONObject(original);
+            JSONObject dataObject = wrapped.getJSONObject("data");
+            JSONArray single = new JSONArray();
+            single.put(dataObject);
+            wrapped.put("data", single);
+            JSONObject modified = new JSONObject(EAPIHelper.modifyPlayer(wrapped.toString()));
+            JSONArray modifiedArray = modified.optJSONArray("data");
+            if (modifiedArray != null && modifiedArray.length() > 0) {
+                JSONObject first = modifiedArray.optJSONObject(0);
+                if (first != null)
+                    modified.put("data", first);
+            }
+            return modified.toString();
         } else if (path.contains("sound/mobile") || path.contains("page=audio_effect")) {
             return EAPIHelper.modifyEffect(original);
         }
         return null;
-    }
-
-    private HashMap<String, String> getRequestParams(Object request) throws IOException {
-        HashMap<String, String> params = new LinkedHashMap<>();
-        try {
-            Object requestBody = XposedCompat.callMethod(request, "body");
-            if (requestBody == null)
-                return params;
-            if (bufferClass == null)
-                bufferClass = XposedCompat.findClass("okio.Buffer", context.getClassLoader());
-            Object buffer = XposedCompat.newInstance(bufferClass);
-            XposedCompat.callMethod(requestBody, "writeTo", buffer);
-            String body = (String) XposedCompat.callMethod(buffer, "readUtf8");
-            for (String pair : body.split("&")) {
-                int idx = pair.indexOf('=');
-                if (idx <= 0)
-                    continue;
-                String name = URLDecoder.decode(pair.substring(0, idx), "UTF-8");
-                String value = URLDecoder.decode(pair.substring(idx + 1), "UTF-8");
-                params.put(name, value);
-            }
-        } catch (Throwable t) {
-            XposedCompat.log("EAPIHook getRequestParams failed");
-            XposedCompat.log(t);
-        }
-        return params;
     }
 }

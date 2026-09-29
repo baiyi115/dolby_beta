@@ -107,8 +107,13 @@ public class ClassHelper {
     }
 
     public static List<String> getFilteredClasses(Pattern pattern, Comparator<String> comparator) {
-        List<String> list = Stream.of(classCacheList)
-                .filter(s -> pattern.matcher(s).find())
+        // classCacheList is only filled by the (async) dex scan, so callers can get here before it
+        // exists — that used to be a NullPointerException instead of an empty result.
+        List<String> cached = classCacheList;
+        if (cached == null || cached.isEmpty())
+            return new ArrayList<>();
+        List<String> list = Stream.of(cached)
+                .filter(s -> s != null && pattern.matcher(s).find())
                 .toList();
         Collections.sort(list, comparator);
         return list;
@@ -136,7 +141,8 @@ public class ClassHelper {
                             return "MUSIC_U=" + cookieString;
                     }
                 } catch (Throwable t) {
-                    t.printStackTrace();
+                    XposedCompat.log("ClassHelper.Cookie getUserLoginCookie failed");
+                    XposedCompat.log(t);
                 }
             }
             if (clazz == null) {
@@ -334,6 +340,12 @@ public class ClassHelper {
 
         public static Method getTabInitMethod(Context context) {
             if (initMethod == null) {
+                // getClazz() may legitimately return null (nothing matched), and callers use the
+                // result without a null check, so never dereference it here.
+                if (clazz == null) {
+                    MessageHelper.sendNotification(context, MessageHelper.tabClassNotFoundCode);
+                    return null;
+                }
                 Method[] methods = findMethodsByExactParameters(clazz, ArrayList.class);
                 if (methods.length != 0)
                     initMethod = methods[0];
@@ -345,6 +357,10 @@ public class ClassHelper {
 
         public static Method getTabRefreshMethod(Context context) {
             if (refreshMethod == null) {
+                if (clazz == null) {
+                    MessageHelper.sendNotification(context, MessageHelper.tabClassNotFoundCode);
+                    return null;
+                }
                 Method[] methods = findMethodsByExactParameters(clazz, void.class, List.class);
                 if (methods.length != 0)
                     refreshMethod = methods[0];
@@ -379,7 +395,10 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (NoSuchElementException e) {
-                    e.printStackTrace();
+                    // Same visibility rule as BottomTabView: a silent failure here looks like
+                    // "ad removal simply does nothing".
+                    XposedCompat.log("dolby_beta ClassHelper.Ad: no class matched the pattern");
+                    MessageHelper.sendNotification(context, MessageHelper.tabClassNotFoundCode);
                 }
             }
             return clazz;
@@ -397,7 +416,9 @@ public class ClassHelper {
                         .filter(m -> Stream.of(m.getParameterTypes()).anyMatch(c -> c == JSONObject.class))
                         .toList());
                 return hookMethodList;
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                XposedCompat.log("dolby_beta ClassHelper.Ad: ad method lookup failed");
+                XposedCompat.log(e);
                 return null;
             }
         }

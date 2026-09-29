@@ -17,10 +17,6 @@ public class ExtraHelper {
 
     public static final String LOVE_PLAY_LIST = "play_list";
 
-    public static final String SIGN_TIME = "sign_time";
-
-    public static final String SIGN_SONG_TIME = "sign_song_time";
-
     public static void init(Context context) {
         ExtraDao.init(context);
     }
@@ -49,15 +45,19 @@ public class ExtraHelper {
     public static String getExtraDate(String key) {
         long now = System.currentTimeMillis();
         CachedExtra cached = CACHE.get(key);
-        if (cached != null && cached.expiresAt > now)
+        if (cached != null && cached.expiresAt > now && cached.value != null)
             return cached.value;
         String value = ExtraDao.getInstance().getExtra(key);
+        // Callers compare the result with "-1" (or call .equals on it), so a NULL column must never
+        // escape here: it would turn every "not fetched yet" check into a NullPointerException.
+        if (value == null)
+            value = "-1";
         CACHE.put(key, new CachedExtra(value, now + CACHE_TTL_MS));
         return value;
     }
 
     public static void setExtraDate(String key, Object value) {
-        String text = value.toString();
+        String text = value == null ? "-1" : value.toString();
         CACHE.put(key, new CachedExtra(text, System.currentTimeMillis() + CACHE_TTL_MS));
         ExtraDao.getInstance().saveExtra(key, text);
     }
@@ -66,7 +66,5 @@ public class ExtraHelper {
         setExtraDate(COOKIE, "-1");
         setExtraDate(USER_ID, "-1");
         setExtraDate(LOVE_PLAY_LIST, "-1");
-        setExtraDate(SIGN_TIME, "-1");
-        setExtraDate(SIGN_SONG_TIME, "-1");
     }
 }

@@ -16,22 +16,26 @@ public class AdExtraHook {
     public AdExtraHook(Context context) {
         if (SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key)) {
             List<Method> methods = ClassHelper.Ad.getAdMethod(context);
-            if (methods != null) {
-                for (Method method : methods) {
-                    XposedCompat.hookMethod(method, new MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            super.beforeHookedMethod(param);
-                            for (int i = 0; i < param.args.length; i++) {
-                                if (param.args[i] instanceof JSONObject) {
-                                    param.args[i] = new JSONObject();
-                                    return;
-                                }
+            if (methods == null || methods.isEmpty()) {
+                // Previously a silent no-op, which looks exactly like "ad removal does not work".
+                XposedCompat.log("AdExtraHook: ad method not resolved, extra ad blocking inactive");
+                return;
+            }
+            for (Method method : methods) {
+                XposedCompat.hookMethod(method, new MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        super.beforeHookedMethod(param);
+                        for (int i = 0; i < param.args.length; i++) {
+                            if (param.args[i] instanceof JSONObject) {
+                                param.args[i] = new JSONObject();
+                                return;
                             }
                         }
-                    });
-                }
+                    }
+                });
             }
+            XposedCompat.logInfo("AdExtraHook: extra ad methods hooked=" + methods.size());
         }
     }
 }
