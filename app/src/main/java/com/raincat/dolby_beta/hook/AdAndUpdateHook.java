@@ -82,16 +82,34 @@ public class AdAndUpdateHook {
             return true;
         if (url.contains("music.126.net"))
             return false;
-        return url.contains("resource-exposure/config") || url.contains("api/ad")
-                || url.endsWith(".jpg") || url.endsWith(".mp4")
+        if (url.contains("resource-exposure/config") || url.contains("api/ad")
                 || url.contains("ad/get") || url.contains("ad/loading")
-                || url.contains("appcustomconfig/get");
+                || url.contains("appcustomconfig/get"))
+            return true;
+        return isAdMediaPath(url);
+    }
+
+    /**
+     * Media URLs are only blocked when the path itself is an ad/splash path. A bare
+     * {@code endsWith(".jpg")} / {@code endsWith(".mp4")} used to rewrite any image or video
+     * request — including cover art and MV playback — to 127.0.0.1-invalid.
+     */
+    private static boolean isAdMediaPath(String url) {
+        if (!url.endsWith(".jpg") && !url.endsWith(".mp4"))
+            return false;
+        String lower = url.toLowerCase(java.util.Locale.US);
+        return lower.contains("/ad/") || lower.contains("/ads/") || lower.contains("/advert")
+                || lower.contains("splash") || lower.contains("loadingad")
+                || lower.contains("/ad_") || lower.contains("_ad.");
     }
 
     private void hookAdUrls(Context context) {
         Class<?> okHttpClientClass = findClassIfExists(okHttpClientClassString, context.getClassLoader());
-        if (okHttpClientClass == null)
+        if (okHttpClientClass == null) {
+            XposedCompat.logError("AdHook OkHttpClient not found: " + okHttpClientClassString
+                    + " (ad URL blocking disabled)");
             return;
+        }
         hookAllMethods(okHttpClientClass, newCallMethodString, new MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
@@ -110,8 +128,12 @@ public class AdAndUpdateHook {
                 if (urlObj == null || !shouldBlock(urlObj.toString()))
                     return;
                 Field target = urlField(urlObj.getClass(), urlFieldString);
-                if (target != null)
+                if (target != null) {
+                    // Trace what actually got blocked: the rule set is heuristic and this is the
+                    // only way to tell an ad hit from a false positive on a device build.
+                    XposedCompat.logDebug("AdHook blocked url: " + urlObj);
                     target.set(urlObj, "https://999.0.0.1/");
+                }
             }
         });
     }
@@ -224,8 +246,13 @@ public class AdAndUpdateHook {
                     "onCreate", Bundle.class, new MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
-                            ((Activity) param.thisObject).finish();
-                            param.setResult(null);
+                            // Re-read the switch per call: the install-time check alone meant that
+                            // turning "去广告" off kept closing the ad activity until a restart.
+                            if (!SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key))
+                                return;
+                            Activity activity = (Activity) param.thisObject;
+                            if (!activity.isFinishing())
+                                activity.finish();
                         }
                     });
         } catch (Throwable t) {

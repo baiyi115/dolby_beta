@@ -44,7 +44,7 @@ public class SettingHook {
     private final String SettingActivity;
     private List<String> switchViewNames = new java.util.ArrayList<>();
     private TextView titleView, subView;
-    private LinearLayout dialogRoot, dialogProxyRoot, dialogBeautyRoot;
+    private LinearLayout dialogRoot, dialogProxyRoot, dialogProxyConfigurationRoot, dialogBeautyRoot;
 
     private BroadcastReceiver broadcastReceiver;
     private Context broadcastReceiverContext;
@@ -103,7 +103,9 @@ public class SettingHook {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 super.afterHookedMethod(param);
-                if (titleView != null)
+                // Skip only when the row already belongs to *this* Activity. A leftover row from a
+                // previous Activity must not block re-injection, or the entry disappears for good.
+                if (titleView != null && titleView.getContext() == param.thisObject)
                     return;
                 if (!param.thisObject.getClass().getName().equals(SettingActivity))
                     return;
@@ -121,6 +123,7 @@ public class SettingHook {
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 super.beforeHookedMethod(param);
                 unregisterBroadcastReceiverFor((Context) param.thisObject);
+                releaseViewsFor((Context) param.thisObject);
             }
         });
     }
@@ -140,7 +143,10 @@ public class SettingHook {
             for (int i = 0; i < container.getChildCount(); i++) {
                 View child = container.getChildAt(i);
                 if (child instanceof ViewGroup && ((ViewGroup) child).getChildCount() > 0) {
-                    styleRef = ((ViewGroup) child).getChildAt(i == 0 ? 1 : 0);
+                    // Prefer the second row's style when we are looking at the first child, but a
+                    // single-row group made this index out of bounds and silently killed the entry.
+                    ViewGroup group = (ViewGroup) child;
+                    styleRef = group.getChildAt(i == 0 && group.getChildCount() > 1 ? 1 : 0);
                     break;
                 }
             }
@@ -253,6 +259,13 @@ public class SettingHook {
                                     ((BaseDialogItem) dialogProxyRoot.getChildAt(i)).refresh();
                                 else if (dialogProxyRoot.getChildAt(i) instanceof BaseDialogInputItem)
                                     ((BaseDialogInputItem) dialogProxyRoot.getChildAt(i)).refresh();
+                            }
+                        if (dialogProxyConfigurationRoot != null)
+                            for (int i = 0; i < dialogProxyConfigurationRoot.getChildCount(); i++) {
+                                if (dialogProxyConfigurationRoot.getChildAt(i) instanceof BaseDialogItem)
+                                    ((BaseDialogItem) dialogProxyConfigurationRoot.getChildAt(i)).refresh();
+                                else if (dialogProxyConfigurationRoot.getChildAt(i) instanceof BaseDialogInputItem)
+                                    ((BaseDialogInputItem) dialogProxyConfigurationRoot.getChildAt(i)).refresh();
                             }
                         if (dialogBeautyRoot != null)
                             for (int i = 0; i < dialogBeautyRoot.getChildCount(); i++) {
@@ -377,15 +390,36 @@ public class SettingHook {
     }
 
     private void showProxyConfigurationDialog(final Context context) {
-        dialogProxyRoot = new BaseDialogItem(context);
-        dialogProxyRoot.setOrientation(LinearLayout.VERTICAL);
-        addRows(dialogProxyRoot,
+        // Separate field from dialogProxyRoot on purpose: both were assigned to the same field, so
+        // whichever dialog opened last stole the refresh broadcast from the other one.
+        dialogProxyConfigurationRoot = new BaseDialogItem(context);
+        dialogProxyConfigurationRoot.setOrientation(LinearLayout.VERTICAL);
+        addRows(dialogProxyConfigurationRoot,
                 new ProxyConfigurationTitleView(context),
                 new ProxyHttpView(context),
                 new ProxyPortView(context),
                 new ProxyOriginalView(context),
-                new ProxyQqView(context));
-        showSubPageDialog(context, dialogProxyRoot);
+                new ProxyQqView(context),
+                // ScriptHelper reads MIGU_COOKIE when it starts the script; without this row the
+                // user had no way to set it.
+                new ProxyMiguView(context));
+        showSubPageDialog(context, dialogProxyConfigurationRoot);
+    }
+
+    /** Drops rows and dialogs that belong to a destroyed Activity so nothing keeps it alive. */
+    private void releaseViewsFor(Context context) {
+        if (titleView != null && titleView.getContext() == context) {
+            titleView = null;
+            subView = null;
+        }
+        if (dialogRoot != null && dialogRoot.getContext() == context)
+            dialogRoot = null;
+        if (dialogProxyRoot != null && dialogProxyRoot.getContext() == context)
+            dialogProxyRoot = null;
+        if (dialogProxyConfigurationRoot != null && dialogProxyConfigurationRoot.getContext() == context)
+            dialogProxyConfigurationRoot = null;
+        if (dialogBeautyRoot != null && dialogBeautyRoot.getContext() == context)
+            dialogBeautyRoot = null;
     }
 
     private void showBeautyDialog(final Context context) {

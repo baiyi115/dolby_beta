@@ -35,11 +35,19 @@ public class UserProfileHook {
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
                     new Thread(() -> {
-                        if (ExtraHelper.getExtraDate(ExtraHelper.COOKIE).equals("-1"))
-                            ExtraHelper.setExtraDate(ExtraHelper.COOKIE, ClassHelper.Cookie.getCookie(context));
-                        if (ExtraHelper.getExtraDate(ExtraHelper.USER_ID).equals("-1"))
-                            UserHelper.getUserInfo();
-                    }).start();
+                        // MainActivity.onResume fires on every foreground switch, so keep this
+                        // thread total: an escaping throwable here reaches the default uncaught
+                        // handler and kills the host process.
+                        try {
+                            if (ExtraHelper.getExtraDate(ExtraHelper.COOKIE).equals("-1"))
+                                ExtraHelper.setExtraDate(ExtraHelper.COOKIE, ClassHelper.Cookie.getCookie(context));
+                            if (ExtraHelper.getExtraDate(ExtraHelper.USER_ID).equals("-1"))
+                                UserHelper.getUserInfo();
+                        } catch (Throwable t) {
+                            XposedCompat.log("UserProfileHook cookie/user refresh failed");
+                            XposedCompat.log(t);
+                        }
+                    }, "dolby-user-refresh").start();
                 }
             });
         }

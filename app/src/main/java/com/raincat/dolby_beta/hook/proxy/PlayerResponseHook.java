@@ -126,10 +126,16 @@ public final class PlayerResponseHook {
         Object client = ProxyTransport.getProxiedOkHttpClient(context);
         Object call = XposedCompat.callMethod(client, "newCall", request);
         Object response = XposedCompat.callMethod(call, "execute");
+        if (response == null) {
+            // execute() went through callMethod(), so a refused/black-holed proxy arrives here as
+            // null rather than as an exception: degrade to the original trial response.
+            logPlayerReplaceOnce("ProxyHook UNM replay produced no response (connect or timeout)");
+            return null;
+        }
         try {
             int code = TrialStateHook.intValue(XposedCompat.callMethod(response, "code"));
             if (code != 200) {
-                logPlayerReplaceOnce("ProxyHook UNM response code=" + code);
+                logPlayerReplaceOnce("ProxyHook UNM response code=" + code + errorSummary(response));
                 return null;
             }
             Object body = XposedCompat.callMethod(response, "body");
@@ -144,7 +150,23 @@ public final class PlayerResponseHook {
                 logPlayerReplaceOnce("ProxyHook full player data merged: " + playerSummary(merged));
             return merged;
         } finally {
+            // Must be closed even on the error paths, otherwise the connection stays checked out.
             XposedCompat.callMethod(response, "close");
+        }
+    }
+
+    /** Short error-body excerpt for the log; bounded so a huge error page cannot flood the log. */
+    private static String errorSummary(Object response) {
+        try {
+            Object body = XposedCompat.callMethod(response, "body");
+            if (body == null)
+                return "";
+            String text = (String) XposedCompat.callMethod(body, "string");
+            if (text == null || text.length() == 0)
+                return "";
+            return ", body=" + (text.length() > 200 ? text.substring(0, 200) : text);
+        } catch (Throwable t) {
+            return "";
         }
     }
 

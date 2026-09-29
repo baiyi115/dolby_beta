@@ -5,14 +5,12 @@ import com.raincat.dolby_beta.xposed.MethodHook;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.Build;
 import android.os.Environment;
 
+import com.raincat.dolby_beta.helper.AdCleanupHelper;
 import com.raincat.dolby_beta.helper.ClassHelper;
 import com.raincat.dolby_beta.helper.ExtraHelper;
-import com.raincat.dolby_beta.helper.FileHelper;
-import com.raincat.dolby_beta.helper.NotificationHelper;
+import com.raincat.dolby_beta.helper.ProcessBroadcast;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.hook.AdAndUpdateHook;
 import com.raincat.dolby_beta.hook.AdExtraHook;
@@ -27,7 +25,6 @@ import com.raincat.dolby_beta.hook.SettingHook;
 import com.raincat.dolby_beta.hook.UserProfileHook;
 import com.raincat.dolby_beta.utils.Tools;
 
-import java.io.File;
 import java.io.IOException;
 
 public class Hook {
@@ -41,7 +38,14 @@ public class Hook {
         }
     }
 
+    private static volatile boolean crashLoggerInstalled;
+
     public static void installCrashLogger() {
+        // Called from both Hook and HookOther; without this guard each call wrapped the previous
+        // handler and one crash produced several duplicated log entries.
+        if (crashLoggerInstalled)
+            return;
+        crashLoggerInstalled = true;
         Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             XposedCompat.log("PROCESS UNCAUGHT EXCEPTION on thread " + thread.getName());
@@ -53,12 +57,6 @@ public class Hook {
 
     public boolean playProcessInit = false;
     public boolean mainProcessInit = false;
-
-    private final String msg_hook_play_process = "hookPlayProcess";
-
-    private final String msg_play_process_init_finish = "playProcessInitFinish";
-
-    public static final String msg_send_notification = "sendNotification";
 
     public Hook(ClassLoader classLoader) {
         XposedCompat.findAndHookMethod(XposedCompat.findClass("com.netease.cloudmusic.NeteaseMusicApplication", classLoader),
@@ -107,41 +105,35 @@ public class Hook {
                                 XposedCompat.logSummary("main-process deferred hooks");
                                 mainProcessInit = true;
                                 if (mainProcessInit && playProcessInit)
-                                    context.sendBroadcast(new Intent(msg_hook_play_process));
+                                    ProcessBroadcast.sendHookPlayProcess(context);
                             });
-                            IntentFilter intentFilter = new IntentFilter();
-                            intentFilter.addAction(msg_play_process_init_finish);
-                            intentFilter.addAction(msg_send_notification);
                             context.registerReceiver(new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
-                                    if (msg_play_process_init_finish.equals(intent.getAction())) {
-                                        XposedCompat.logInfo("broadcast received: " + msg_play_process_init_finish);
+                                    String action = intent.getAction();
+                                    if (ProcessBroadcast.PLAY_PROCESS_READY.equals(action)) {
+                                        XposedCompat.logInfo("broadcast received: " + ProcessBroadcast.PLAY_PROCESS_READY);
                                         playProcessInit = true;
                                         if (mainProcessInit && playProcessInit)
-                                            context.sendBroadcast(new Intent(msg_hook_play_process));
-                                    } else if (msg_send_notification.equals(intent.getAction())) {
+                                            ProcessBroadcast.sendHookPlayProcess(context);
+                                    } else if (ProcessBroadcast.SEND_NOTIFICATION.equals(action)) {
                                         XposedCompat.logInfo("notification requested: code=" + intent.getIntExtra("code", 0x10)
                                                 + " title=" + intent.getStringExtra("title"));
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-                                            NotificationHelper.getInstance(context).sendUnLockNotification(context, intent.getIntExtra("code", 0x10),
-                                                    intent.getStringExtra("title"), intent.getStringExtra("title"), intent.getStringExtra("message"));
+                                        ProcessBroadcast.handleNotification(context, intent);
                                         XposedCompat.logInfo(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
                                     }
                                 }
-                            }, intentFilter);
+                            }, ProcessBroadcast.mainProcessFilter());
                         } else if (processName.equals(PACKAGE_NAME + ":play") && SettingHelper.getInstance().getSetting(SettingHelper.master_key)) {
                             installCrashLogger();
                             XposedCompat.logInfo("play-process installing");
 
                             installAll(playSpecs(context));
-                            IntentFilter intentFilter = new IntentFilter();
-                            intentFilter.addAction(msg_hook_play_process);
                             context.registerReceiver(new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
-                                    if (msg_hook_play_process.equals(intent.getAction())) {
-                                        XposedCompat.logInfo("broadcast received: " + msg_hook_play_process);
+                                    if (ProcessBroadcast.HOOK_PLAY_PROCESS.equals(intent.getAction())) {
+                                        XposedCompat.logInfo("broadcast received: " + ProcessBroadcast.HOOK_PLAY_PROCESS);
                                         ClassHelper.getCacheClassList(context, versionCode, () -> {
                                             installAll(playDeferredSpecs(context, versionCode));
                                             XposedCompat.logInfo("play-process immediate hooks ready before deferred hooks");
@@ -149,9 +141,9 @@ public class Hook {
                                         });
                                     }
                                 }
-                            }, intentFilter);
+                            }, ProcessBroadcast.playProcessFilter());
                             XposedCompat.logInfo("play-process immediate hooks ready, init finish broadcast sent");
-                            context.sendBroadcast(new Intent(msg_play_process_init_finish));
+                            ProcessBroadcast.sendPlayProcessReady(context);
                         }
                     }
                 });
@@ -243,23 +235,8 @@ public class Hook {
     }
 
     private void deleteAdAndTinker() throws IOException {
-
-        String CACHE_PATH = Environment.getExternalStorageDirectory() + "/netease/cloudmusic/Ad";
-        String CACHE_PATH2 = Environment.getExternalStorageDirectory() + "/Android/data/com.netease.cloudmusic/cache/Ad";
-
-        String TINKER_PATH = "data/data/" + PACKAGE_NAME + "/tinker";
-
-        FileHelper.deleteDirectory(CACHE_PATH);
-        FileHelper.deleteDirectory(CACHE_PATH2);
-
-        File tinkerFile = new File(TINKER_PATH);
-        if (tinkerFile.exists() && tinkerFile.isDirectory())
-            FileHelper.deleteDirectory(TINKER_PATH);
-        if (!tinkerFile.exists())
-            tinkerFile.createNewFile();
-
-        String command = "chmod 000 " + tinkerFile.getAbsolutePath();
-        Runtime runtime = Runtime.getRuntime();
-        runtime.exec(command);
+        AdCleanupHelper.deleteAdAndTinker(PACKAGE_NAME,
+                Environment.getExternalStorageDirectory() + "/netease/cloudmusic/Ad",
+                AdCleanupHelper.externalAdCache(PACKAGE_NAME));
     }
 }

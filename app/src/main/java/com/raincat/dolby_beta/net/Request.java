@@ -8,6 +8,5 @@ class Request {
     String param = "";
     HashMap<String, Object> header = new HashMap<>();
 
-    int reTry = 0;
     int timeout = 10000;
 }

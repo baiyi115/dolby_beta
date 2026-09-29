@@ -49,24 +49,36 @@ public class RnSettingEntryHook {
             Collections.synchronizedSet(new HashSet<>());
     private static final Map<Activity, ViewTreeObserver.OnGlobalLayoutListener> LAYOUT_WATCHERS =
             Collections.synchronizedMap(new WeakHashMap<>());
+    /** View each layout watcher was attached to, so it can be unregistered after the view is gone. */
+    private static final Map<Activity, WeakReference<View>> LAYOUT_WATCHER_VIEWS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     public RnSettingEntryHook(Context context) {
         Class<?> containerClass = findClassIfExists(RN_CONTAINER_CLASS, context.getClassLoader());
-        if (containerClass == null) {
-            List<String> candidates = DexKitHelper.findRnContainerCandidates(context);
-            for (String name : candidates) {
+        Method initMethod = findContainerInitMethod(containerClass);
+
+        // RN_CONTAINER_CLASS is a hard-coded obfuscated name, so it is only right for the NetEase
+        // build it was found in. Fall back to DexKit whenever the class is missing *or* still
+        // exists but no longer has a (Bundle, ViewGroup) init method: the previous check only
+        // covered the missing-class case, and a mere signature change silently removed the entry.
+        if (initMethod == null && containerClass != null)
+            XposedCompat.log("dolby_beta RnSettingEntryHook: " + RN_CONTAINER_CLASS
+                    + " init method shape changed, trying DexKit");
+        if (initMethod == null) {
+            for (String name : DexKitHelper.findRnContainerCandidates(context)) {
                 Class<?> candidate = findClassIfExists(name, context.getClassLoader());
-                if (findContainerInitMethod(candidate) != null) {
+                Method candidateInit = findContainerInitMethod(candidate);
+                if (candidateInit != null) {
                     containerClass = candidate;
+                    initMethod = candidateInit;
                     XposedCompat.logInfo("dolby_beta RnSettingEntryHook: DexKit fallback=" + name);
                     break;
                 }
             }
         }
 
-        Method initMethod = findContainerInitMethod(containerClass);
         if (initMethod == null) {
-            XposedCompat.log("dolby_beta RnSettingEntryHook: init method not found"
+            XposedCompat.logError("dolby_beta RnSettingEntryHook: init method not found"
                     + ", container=" + (containerClass == null ? "null" : containerClass.getName())
                     + ", target=" + context.getPackageName());
             return;
@@ -375,6 +387,7 @@ public class RnSettingEntryHook {
         };
         observedView.getViewTreeObserver().addOnGlobalLayoutListener(listener);
         LAYOUT_WATCHERS.put(activity, listener);
+        LAYOUT_WATCHER_VIEWS.put(activity, new WeakReference<>(observedView));
     }
 
     private static boolean tryInjectSettingEntry(Activity activity) {
@@ -822,6 +835,12 @@ public class RnSettingEntryHook {
 
     private static void removeLayoutWatcher(Activity activity, View observedView) {
         ViewTreeObserver.OnGlobalLayoutListener listener = LAYOUT_WATCHERS.remove(activity);
+        WeakReference<View> watched = LAYOUT_WATCHER_VIEWS.remove(activity);
+        // The view the listener was attached to is remembered, because the caller's content view can
+        // already be null here — in that case the listener used to be dropped from the map without
+        // ever being unregistered from the ViewTreeObserver.
+        if (observedView == null && watched != null)
+            observedView = watched.get();
         if (listener != null && observedView != null) {
             try {
                 observedView.getViewTreeObserver().removeGlobalOnLayoutListener(listener);

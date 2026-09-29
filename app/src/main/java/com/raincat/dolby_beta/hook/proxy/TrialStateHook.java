@@ -19,6 +19,9 @@ import static com.raincat.dolby_beta.xposed.XposedCompat.findClassIfExists;
 public final class TrialStateHook {
     private static final Set<String> TRIAL_HITS =
             Collections.synchronizedSet(new HashSet<>());
+    /** Cap for the once-only registries; they exist to de-noise logs, not to be a history. */
+    private static final int HIT_LIMIT = 512;
+    private static final int REPLACED_IDS_LIMIT = 1024;
 
     private static final Set<Long> REPLACED_IDS =
             Collections.synchronizedSet(new LinkedHashSet<>());
@@ -141,12 +144,27 @@ public final class TrialStateHook {
 
     /** Shared once-only registry: the player JSON replacement reports through the same set. */
     static boolean markOnce(String message) {
-        return TRIAL_HITS.add(message);
+        synchronized (TRIAL_HITS) {
+            // Bounded: some callers pass per-call values, and this set lives for the process
+            // lifetime, so an unbounded registry would grow with every playback position.
+            if (TRIAL_HITS.size() >= HIT_LIMIT)
+                TRIAL_HITS.clear();
+            return TRIAL_HITS.add(message);
+        }
     }
 
     private static void logTrialHitOnce(String message) {
         if (markOnce(message))
             XposedCompat.logInfo("ProxyHook trial-state hit: " + message);
+    }
+
+    /**
+     * Once-only logging for messages that carry per-call values (positions, ids). The registry key
+     * has to stay stable, otherwise every call is a new entry.
+     */
+    private static void logTrialHitOnce(String key, String detail) {
+        if (markOnce(key))
+            XposedCompat.logInfo("ProxyHook trial-state hit: " + key + detail);
     }
 
     private static void hookAudioRealDuration(Class<?> musicInfo) {
@@ -262,8 +280,8 @@ public final class TrialStateHook {
 
             boolean premature = duration - position > 10_000;
             if (premature)
-                logTrialHitOnce("MainProcessPlayService.onCompletion blocked: position="
-                        + position + ", duration=" + duration);
+                logTrialHitOnce("MainProcessPlayService.onCompletion blocked",
+                        " position=" + position + ", duration=" + duration);
             return premature;
         } catch (Throwable t) {
             XposedCompat.noteHookFailed("ProxyHook#isPrematureCompletion", t);
@@ -280,8 +298,8 @@ public final class TrialStateHook {
             int position = intValue(XposedCompat.callStaticMethod(serviceClass, "getCurrentTime"));
             if (position < 0)
                 position = intValue(XposedCompat.callMethod(service, "getCurrentStreamPosition"));
-            logTrialHitOnce("MainProcessPlayService.onCompletion observed: position="
-                    + position + ", duration=" + duration + ", music=" + music);
+            logTrialHitOnce("MainProcessPlayService.onCompletion observed",
+                    " position=" + position + ", duration=" + duration + ", music=" + music);
         } catch (Throwable t) {
             XposedCompat.noteHookFailed("ProxyHook#logCompletionState", t);
         }
@@ -333,8 +351,15 @@ public final class TrialStateHook {
         if (id <= 0)
             return;
         synchronized (REPLACED_IDS) {
-            if (REPLACED_IDS.size() > 1024)
-                REPLACED_IDS.clear();
+            // Evict the oldest ids instead of dropping the whole set: clearing it made every
+            // already-replaced song fall back to its trial state after a long session.
+            while (REPLACED_IDS.size() >= REPLACED_IDS_LIMIT) {
+                java.util.Iterator<Long> oldest = REPLACED_IDS.iterator();
+                if (!oldest.hasNext())
+                    break;
+                oldest.next();
+                oldest.remove();
+            }
             REPLACED_IDS.add(id);
         }
         lastReplacedAt = System.currentTimeMillis();

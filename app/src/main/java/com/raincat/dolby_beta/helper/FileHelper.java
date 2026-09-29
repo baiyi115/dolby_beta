@@ -2,6 +2,8 @@ package com.raincat.dolby_beta.helper;
 
 import android.content.res.AssetManager;
 
+import com.raincat.dolby_beta.xposed.XposedCompat;
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -75,7 +77,8 @@ public class FileHelper {
                 }
                 inputStream.close();
             } catch (Exception e) {
-                e.printStackTrace();
+                XposedCompat.log("FileHelper read failed: " + path);
+                XposedCompat.log(e);
             }
         }
         return list;
@@ -91,14 +94,16 @@ public class FileHelper {
                 out.write("\n");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            XposedCompat.log("FileHelper write failed: " + path);
+            XposedCompat.log(e);
         } finally {
             try {
                 if (out != null) {
                     out.close();
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                XposedCompat.log("FileHelper write close failed");
+                XposedCompat.log(e);
             }
         }
     }
@@ -125,7 +130,8 @@ public class FileHelper {
                 fos.close();
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            XposedCompat.log("FileHelper asset copy failed: " + oldPath);
+            XposedCompat.log(e);
         }
     }
 
@@ -158,7 +164,8 @@ public class FileHelper {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            XposedCompat.log("FileHelper unzipFile failed: " + zipFileString);
+            XposedCompat.log(e);
             return false;
         }
         return true;
@@ -197,7 +204,8 @@ public class FileHelper {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            XposedCompat.log("FileHelper unzipFiles failed: " + zipFileString);
+            XposedCompat.log(e);
             return false;
         }
         return true;
