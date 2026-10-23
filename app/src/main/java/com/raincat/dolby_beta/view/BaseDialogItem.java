@@ -72,9 +72,7 @@ public class BaseDialogItem extends LinearLayout {
             subView.setTextColor(Color.DKGRAY);
         }
         checkBox.setEnabled(enabled);
-        // Greyed-out rows used to stay clickable, so the sub-pages ("音源代理", "美化", "黑胶")
-        // could still be opened and edited while the master switch was off. Clickability has to be
-        // removed here because setOnClickListener() in the subclass sets it back to true.
+        // Subclass setOnClickListener() re-enables clicks, so clear them here too.
         setClickable(enabled);
         setLongClickable(enabled);
     }

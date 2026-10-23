@@ -23,6 +23,9 @@ import com.raincat.dolby_beta.hook.ProxyHook;
 import com.raincat.dolby_beta.hook.RnSettingEntryHook;
 import com.raincat.dolby_beta.hook.SettingHook;
 import com.raincat.dolby_beta.hook.UserProfileHook;
+import com.raincat.dolby_beta.port.ads.AdHooks;
+import com.raincat.dolby_beta.port.privacy.PrivacyHooks;
+import com.raincat.dolby_beta.port.ui.UiHooks;
 import com.raincat.dolby_beta.utils.Tools;
 
 import java.io.IOException;
@@ -209,7 +212,38 @@ public class Hook {
                                 XposedCompat.noteHookFailed("deleteAdAndTinker", e);
                             }
                         }),
-                new HookSpec("AdAndUpdateHook", null, () -> new AdAndUpdateHook(context, versionCode)));
+                new HookSpec("AdAndUpdateHook", null, () -> new AdAndUpdateHook(context, versionCode)),
+                new HookSpec("AdHooks",
+                        () -> SettingHelper.getInstance().getSetting(SettingHelper.ad_splash_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_launch_dialog_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_report_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_search_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_preload_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_feed_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_comment_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_player_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_audio_clip_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_motivation_key),
+                        () -> AdHooks.install(context)),
+                new HookSpec("UiHooks",
+                        () -> SettingHelper.getInstance().getSetting(SettingHelper.ui_home_blocks_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_top_channels_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_update_dialog_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_startup_delay_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_hints_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_autoplay_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_player_hints_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_search_guide_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_lyrics_hint_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_community_live_key),
+                        () -> UiHooks.install(context)),
+                new HookSpec("PrivacyHooks",
+                        () -> SettingHelper.getInstance().getSetting(SettingHelper.pv_oaid_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.pv_log_tasks_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.pv_apm_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.pv_stats_key)
+                                || SettingHelper.getInstance().getSetting(SettingHelper.pv_clipboard_key),
+                        () -> PrivacyHooks.install(context)));
     }
 
     /** Needs the decompiled class list, so it runs after ClassHelper's cache is ready. */
@@ -224,8 +258,11 @@ public class Hook {
     }
 
     private java.util.List<HookSpec> playSpecs(Context context) {
-        return java.util.Collections.singletonList(
-                new HookSpec("play:ProxyHook", null, () -> new ProxyHook(context, true)));
+        return java.util.Arrays.asList(
+                new HookSpec("play:ProxyHook", null, () -> new ProxyHook(context, true)),
+                new HookSpec("play:AdHooks",
+                        () -> SettingHelper.getInstance().getSetting(SettingHelper.ad_audio_clip_key),
+                        () -> AdHooks.installPlayProcess(context)));
     }
 
     private java.util.List<HookSpec> playDeferredSpecs(Context context, int versionCode) {

@@ -25,6 +25,12 @@ import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.utils.Tools;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
 import com.raincat.dolby_beta.view.BaseDialogItem;
+import com.raincat.dolby_beta.view.InputRow;
+import com.raincat.dolby_beta.view.ToggleRow;
+import com.raincat.dolby_beta.view.ad.AdFilterView;
+import com.raincat.dolby_beta.view.privacy.PrivacyTitleView;
+import com.raincat.dolby_beta.view.privacy.PrivacyView;
+import com.raincat.dolby_beta.view.ui.AdTitleView;
 import com.raincat.dolby_beta.view.beauty.BeautyTabHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyTitleView;
 import com.raincat.dolby_beta.view.proxy.*;
@@ -45,6 +51,8 @@ public class SettingHook {
     private List<String> switchViewNames = new java.util.ArrayList<>();
     private TextView titleView, subView;
     private LinearLayout dialogRoot, dialogProxyRoot, dialogProxyConfigurationRoot, dialogBeautyRoot;
+    private LinearLayout dialogAdRoot, dialogPrivacyRoot;
+    private AlertDialog mainDialog, subDialog;
 
     private BroadcastReceiver broadcastReceiver;
     private Context broadcastReceiverContext;
@@ -122,6 +130,10 @@ public class SettingHook {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 super.beforeHookedMethod(param);
+                if (mainDialog != null && mainDialog.getContext() == param.thisObject)
+                    mainDialog.dismiss();
+                if (subDialog != null && subDialog.getContext() == param.thisObject)
+                    subDialog.dismiss();
                 unregisterBroadcastReceiverFor((Context) param.thisObject);
                 releaseViewsFor((Context) param.thisObject);
             }
@@ -241,6 +253,8 @@ public class SettingHook {
         intentFilter.addAction(SettingHelper.proxy_setting);
         intentFilter.addAction(SettingHelper.beauty_setting);
         intentFilter.addAction(SettingHelper.proxy_configuration_setting);
+        intentFilter.addAction(SettingHelper.ad_filter_setting);
+        intentFilter.addAction(SettingHelper.privacy_setting);
         broadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context c, Intent intent) {
@@ -271,11 +285,27 @@ public class SettingHook {
                             for (int i = 0; i < dialogBeautyRoot.getChildCount(); i++) {
                                 if (dialogBeautyRoot.getChildAt(i) instanceof BaseDialogItem)
                                     ((BaseDialogItem) dialogBeautyRoot.getChildAt(i)).refresh();
+                                else if (dialogBeautyRoot.getChildAt(i) instanceof BaseDialogInputItem)
+                                    ((BaseDialogInputItem) dialogBeautyRoot.getChildAt(i)).refresh();
+                            }
+                        if (dialogAdRoot != null)
+                            for (int i = 0; i < dialogAdRoot.getChildCount(); i++) {
+                                if (dialogAdRoot.getChildAt(i) instanceof BaseDialogItem)
+                                    ((BaseDialogItem) dialogAdRoot.getChildAt(i)).refresh();
+                            }
+                        if (dialogPrivacyRoot != null)
+                            for (int i = 0; i < dialogPrivacyRoot.getChildCount(); i++) {
+                                if (dialogPrivacyRoot.getChildAt(i) instanceof BaseDialogItem)
+                                    ((BaseDialogItem) dialogPrivacyRoot.getChildAt(i)).refresh();
                             }
                     } else if (SettingHelper.proxy_setting.equals(action)) {
                         showProxyDialog(context);
                     } else if (SettingHelper.beauty_setting.equals(action)) {
                         showBeautyDialog(context);
+                    } else if (SettingHelper.ad_filter_setting.equals(action)) {
+                        showAdDialog(context);
+                    } else if (SettingHelper.privacy_setting.equals(action)) {
+                        showPrivacyDialog(context);
                     } else if (SettingHelper.proxy_configuration_setting.equals(action)) {
                         showProxyConfigurationDialog(context);
                     }
@@ -323,15 +353,31 @@ public class SettingHook {
 
     /** Sub-pages share the same two buttons: save only, or save and restart the host app. */
     private void showSubPageDialog(Context context, View content) {
-        new AlertDialog.Builder(context)
-                .setView(content)
+        dismissSubPages();
+        ScrollView scrollView = new ScrollView(context);
+        scrollView.setOverScrollMode(ScrollView.OVER_SCROLL_NEVER);
+        scrollView.addView(content);
+        subDialog = new AlertDialog.Builder(context)
+                .setView(scrollView)
                 .setCancelable(true)
                 .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
-                .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
+                .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context))
+                .create();
+        subDialog.setOnDismissListener(d -> subDialog = null);
+        subDialog.show();
+    }
+
+    /** Only one sub-page may be open at a time; leaving it mounted leaks the Activity. */
+    private void dismissSubPages() {
+        if (subDialog != null) {
+            subDialog.dismiss();
+            subDialog = null;
+        }
     }
 
     private void showSettingDialog(final Context context) {
-        dialogRoot = new BaseDialogItem(context);
+        dismissSubPages();
+        dialogRoot = new LinearLayout(context);
         dialogRoot.setOrientation(LinearLayout.VERTICAL);
         ScrollView scrollView = new ScrollView(context);
         scrollView.setOverScrollMode(ScrollView.OVER_SCROLL_NEVER);
@@ -345,6 +391,10 @@ public class SettingHook {
         proxyView.setBaseOnView(masterView);
         BeautyView beautyView = new BeautyView(context);
         beautyView.setBaseOnView(masterView);
+        AdFilterView adFilterView = new AdFilterView(context);
+        adFilterView.setBaseOnView(masterView);
+        PrivacyView privacyView = new PrivacyView(context);
+        privacyView.setBaseOnView(masterView);
 
         addRows(dialogRoot,
                 new TitleView(context),
@@ -352,18 +402,26 @@ public class SettingHook {
                 blackView,
                 proxyView,
                 beautyView,
+                adFilterView,
+                privacyView,
                 new ResetModuleView(context),
                 new AboutView(context));
 
-        new AlertDialog.Builder(context)
+        mainDialog = new AlertDialog.Builder(context)
                 .setView(scrollView)
                 .setCancelable(false)
                 .setPositiveButton("确定", (dialogInterface, i) -> refresh())
-                .setNegativeButton("重启网易云", (dialogInterface, i) -> restartApplication(context)).show();
+                .setNegativeButton("重启网易云", (dialogInterface, i) -> restartApplication(context))
+                .create();
+        mainDialog.setOnDismissListener(d -> {
+            mainDialog = null;
+            dismissSubPages();
+        });
+        mainDialog.show();
     }
 
     private void showProxyDialog(final Context context) {
-        dialogProxyRoot = new BaseDialogItem(context);
+        dialogProxyRoot = new LinearLayout(context);
         dialogProxyRoot.setOrientation(LinearLayout.VERTICAL);
         ProxyMasterView proxyMasterView = new ProxyMasterView(context);
         ProxyCoverView proxyCoverView = new ProxyCoverView(context);
@@ -392,7 +450,7 @@ public class SettingHook {
     private void showProxyConfigurationDialog(final Context context) {
         // Separate field from dialogProxyRoot on purpose: both were assigned to the same field, so
         // whichever dialog opened last stole the refresh broadcast from the other one.
-        dialogProxyConfigurationRoot = new BaseDialogItem(context);
+        dialogProxyConfigurationRoot = new LinearLayout(context);
         dialogProxyConfigurationRoot.setOrientation(LinearLayout.VERTICAL);
         addRows(dialogProxyConfigurationRoot,
                 new ProxyConfigurationTitleView(context),
@@ -420,15 +478,94 @@ public class SettingHook {
             dialogProxyConfigurationRoot = null;
         if (dialogBeautyRoot != null && dialogBeautyRoot.getContext() == context)
             dialogBeautyRoot = null;
+        if (dialogAdRoot != null && dialogAdRoot.getContext() == context)
+            dialogAdRoot = null;
+        if (dialogPrivacyRoot != null && dialogPrivacyRoot.getContext() == context)
+            dialogPrivacyRoot = null;
     }
 
     private void showBeautyDialog(final Context context) {
-        dialogBeautyRoot = new BaseDialogItem(context);
+        dialogBeautyRoot = new LinearLayout(context);
         dialogBeautyRoot.setOrientation(LinearLayout.VERTICAL);
         addRows(dialogBeautyRoot,
                 new BeautyTitleView(context),
-                new BeautyTabHideView(context));
+                new BeautyTabHideView(context),
+                // UI 精简（移植自 cloudmusictool），追加在原有美化项之后
+                new ToggleRow(context, SettingHelper.ui_update_dialog_title,
+                        SettingHelper.ui_update_dialog_sub, SettingHelper.ui_update_dialog_key),
+                new ToggleRow(context, SettingHelper.ui_startup_delay_title,
+                        SettingHelper.ui_startup_delay_sub, SettingHelper.ui_startup_delay_key),
+                new ToggleRow(context, SettingHelper.ui_home_blocks_title,
+                        SettingHelper.ui_home_blocks_sub, SettingHelper.ui_home_blocks_key),
+                new InputRow(context, SettingHelper.ui_home_blocks_filter_title,
+                        SettingHelper.ui_home_blocks_filter_key,
+                        SettingHelper.ui_home_blocks_filter_default),
+                new ToggleRow(context, SettingHelper.ui_top_channels_title,
+                        SettingHelper.ui_top_channels_sub, SettingHelper.ui_top_channels_key),
+                new InputRow(context, SettingHelper.ui_top_channels_keep_title,
+                        SettingHelper.ui_top_channels_keep_key,
+                        SettingHelper.ui_top_channels_keep_default),
+                new ToggleRow(context, SettingHelper.ui_hints_title,
+                        SettingHelper.ui_hints_sub, SettingHelper.ui_hints_key),
+                new ToggleRow(context, SettingHelper.ui_autoplay_title,
+                        SettingHelper.ui_autoplay_sub, SettingHelper.ui_autoplay_key),
+                new ToggleRow(context, SettingHelper.ui_player_hints_title,
+                        SettingHelper.ui_player_hints_sub, SettingHelper.ui_player_hints_key),
+                new ToggleRow(context, SettingHelper.ui_search_guide_title,
+                        SettingHelper.ui_search_guide_sub, SettingHelper.ui_search_guide_key),
+                new ToggleRow(context, SettingHelper.ui_lyrics_hint_title,
+                        SettingHelper.ui_lyrics_hint_sub, SettingHelper.ui_lyrics_hint_key),
+                new ToggleRow(context, SettingHelper.ui_community_live_title,
+                        SettingHelper.ui_community_live_sub, SettingHelper.ui_community_live_key));
         showSubPageDialog(context, dialogBeautyRoot);
+    }
+
+    /** 广告净化子页（独立开关，不受 black_key 影响）。 */
+    private void showAdDialog(final Context context) {
+        dialogAdRoot = new LinearLayout(context);
+        dialogAdRoot.setOrientation(LinearLayout.VERTICAL);
+        addRows(dialogAdRoot,
+                new AdTitleView(context),
+                new ToggleRow(context, SettingHelper.ad_splash_title,
+                        SettingHelper.ad_splash_sub, SettingHelper.ad_splash_key),
+                new ToggleRow(context, SettingHelper.ad_launch_dialog_title,
+                        SettingHelper.ad_launch_dialog_sub, SettingHelper.ad_launch_dialog_key),
+                new ToggleRow(context, SettingHelper.ad_report_title,
+                        SettingHelper.ad_report_sub, SettingHelper.ad_report_key),
+                new ToggleRow(context, SettingHelper.ad_search_title,
+                        SettingHelper.ad_search_sub, SettingHelper.ad_search_key),
+                new ToggleRow(context, SettingHelper.ad_preload_title,
+                        SettingHelper.ad_preload_sub, SettingHelper.ad_preload_key),
+                new ToggleRow(context, SettingHelper.ad_feed_title,
+                        SettingHelper.ad_feed_sub, SettingHelper.ad_feed_key),
+                new ToggleRow(context, SettingHelper.ad_comment_title,
+                        SettingHelper.ad_comment_sub, SettingHelper.ad_comment_key),
+                new ToggleRow(context, SettingHelper.ad_player_title,
+                        SettingHelper.ad_player_sub, SettingHelper.ad_player_key),
+                new ToggleRow(context, SettingHelper.ad_audio_clip_title,
+                        SettingHelper.ad_audio_clip_sub, SettingHelper.ad_audio_clip_key),
+                new ToggleRow(context, SettingHelper.ad_motivation_title,
+                        SettingHelper.ad_motivation_sub, SettingHelper.ad_motivation_key));
+        showSubPageDialog(context, dialogAdRoot);
+    }
+
+    /** 隐私保护子页（默认全关）。 */
+    private void showPrivacyDialog(final Context context) {
+        dialogPrivacyRoot = new LinearLayout(context);
+        dialogPrivacyRoot.setOrientation(LinearLayout.VERTICAL);
+        addRows(dialogPrivacyRoot,
+                new PrivacyTitleView(context),
+                new ToggleRow(context, SettingHelper.pv_oaid_title,
+                        SettingHelper.pv_oaid_sub, SettingHelper.pv_oaid_key),
+                new ToggleRow(context, SettingHelper.pv_log_tasks_title,
+                        SettingHelper.pv_log_tasks_sub, SettingHelper.pv_log_tasks_key),
+                new ToggleRow(context, SettingHelper.pv_apm_title,
+                        SettingHelper.pv_apm_sub, SettingHelper.pv_apm_key),
+                new ToggleRow(context, SettingHelper.pv_stats_title,
+                        SettingHelper.pv_stats_sub, SettingHelper.pv_stats_key),
+                new ToggleRow(context, SettingHelper.pv_clipboard_title,
+                        SettingHelper.pv_clipboard_sub, SettingHelper.pv_clipboard_key));
+        showSubPageDialog(context, dialogPrivacyRoot);
     }
 
     private void restartApplication(Context context) {
