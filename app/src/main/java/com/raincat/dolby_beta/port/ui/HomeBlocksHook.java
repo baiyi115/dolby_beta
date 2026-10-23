@@ -27,7 +27,7 @@ public final class HomeBlocksHook {
 
     public static void install(Context context, Set<String> hideSet) {
         if (hideSet == null || hideSet.isEmpty()) {
-            XposedCompat.logInfo("UI-03 hide list empty; filtering skipped");
+            XposedCompat.logInfo("homeblocks hide list empty; filtering skipped");
             return;
         }
         ClassLoader cl = context.getClassLoader();
@@ -42,7 +42,7 @@ public final class HomeBlocksHook {
         }
 
         Method order = PortKit.findMethod(cls, "getBlockCodeOrderList");
-        PortKit.install("UI-03 MixContainerData#getBlockCodeOrderList", order, new MethodHook() {
+        PortKit.install("homeblocks MixContainerData#getBlockCodeOrderList", order, new MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 try {
@@ -55,13 +55,13 @@ public final class HomeBlocksHook {
                         param.result = filtered;
                     }
                 } catch (Throwable t) {
-                    XposedCompat.logDebug("UI-03 filter order list failed: " + t);
+                    XposedCompat.logDebug("homeblocks filter order list failed: " + t);
                 }
             }
         });
 
         Method resources = PortKit.findMethod(cls, "getResources");
-        PortKit.install("UI-03 MixContainerData#getResources", resources, new MethodHook() {
+        PortKit.install("homeblocks MixContainerData#getResources", resources, new MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 try {
@@ -73,7 +73,7 @@ public final class HomeBlocksHook {
                         param.result = out;
                     }
                 } catch (Throwable t) {
-                    XposedCompat.logDebug("UI-03 filter resources failed: " + t);
+                    XposedCompat.logDebug("homeblocks filter resources failed: " + t);
                 }
             }
         });
@@ -85,7 +85,7 @@ public final class HomeBlocksHook {
             return;
         }
         Method getBlockList = PortKit.findMethod(cls, "getBlockList");
-        PortKit.install("UI-03 DiscoveryBlockData#getBlockList", getBlockList, new MethodHook() {
+        PortKit.install("homeblocks DiscoveryBlockData#getBlockList", getBlockList, new MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 try {
@@ -104,11 +104,11 @@ public final class HomeBlocksHook {
                         out.add(item);
                     }
                     if (removed > 0) {
-                        PortKit.hit("UI-03 getBlockList removed " + removed);
+                        PortKit.hit("homeblocks getBlockList removed " + removed);
                         param.result = out;
                     }
                 } catch (Throwable t) {
-                    XposedCompat.logDebug("UI-03 getBlockList failed: " + t);
+                    XposedCompat.logDebug("homeblocks getBlockList failed: " + t);
                 }
             }
         });
@@ -136,7 +136,7 @@ public final class HomeBlocksHook {
             if (removed == 0) {
                 return null;
             }
-            PortKit.hit("UI-03 order list removed " + removed + "/" + arr.length());
+            PortKit.hit("homeblocks order list removed " + removed + "/" + arr.length());
             return out.toString();
         } catch (Throwable t) {
             return null;
@@ -159,7 +159,7 @@ public final class HomeBlocksHook {
         if (removed == 0) {
             return null;
         }
-        PortKit.hit("UI-03 resources removed " + removed + "/" + list.size());
+        PortKit.hit("homeblocks resources removed " + removed + "/" + list.size());
         return out;
     }
 

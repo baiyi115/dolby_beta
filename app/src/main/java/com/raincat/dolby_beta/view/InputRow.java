@@ -11,7 +11,7 @@ import com.raincat.dolby_beta.helper.SettingHelper;
  * 通用文本输入行。
  *
  * 现有代码里每个输入项都要单独建一个 View 类（ProxyHttpView、ProxyOriginalView…），
- * 移植过来的 UI-03 / UI-04 清单直接复用本类，不再新增文件。
+ * 首页模块与顶部频道的清单输入直接复用本类，不再新增文件。
  */
 public class InputRow extends BaseDialogInputItem {
 

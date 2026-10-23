@@ -9,10 +9,10 @@ import com.raincat.dolby_beta.xposed.MethodHook;
 import java.lang.reflect.Method;
 
 /**
- * AD-10: reward-ad and free-listening prompts.
+ * admotive: reward-ad and free-listening prompts.
  *
  * The bottom "free listening time used up" bar belongs to the ad-motivation system
- * (PlayerAdMotivationView), not to the ordinary ad pipeline, so AD-01/06 never reach it.
+ * (PlayerAdMotivationView), not to the ordinary ad pipeline, so the splash and feed hooks never reach it.
  * AdGreetingDSLView is the same system rendered into the home greeting slot.
  */
 public final class AdMotivationHook {
@@ -27,11 +27,11 @@ public final class AdMotivationHook {
         Class<?> motivation = PortKit.findClass(Profile9581.PLAYER_AD_MOTIVATION, cl);
         if (motivation != null) {
             Method maybeDisplay = PortKit.findMethod(motivation, "maybeDisplayHint");
-            PortKit.install("AD-10 PlayerAdMotivationView#maybeDisplayHint", maybeDisplay,
+            PortKit.install("admotive PlayerAdMotivationView#maybeDisplayHint", maybeDisplay,
                     PortKit.skipVoid("PlayerAdMotivationView.maybeDisplayHint"));
 
             Method hide = PortKit.findMethod(motivation, "hide");
-            PortKit.install("AD-10 PlayerAdMotivationView#hide", hide, new MethodHook() {
+            PortKit.install("admotive PlayerAdMotivationView#hide", hide, new MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     PortKit.hit("PlayerAdMotivationView.hide");
@@ -65,7 +65,7 @@ public final class AdMotivationHook {
                 if (!n.equals("show") && !n.startsWith("show")) {
                     continue;
                 }
-                PortKit.install("AD-10 " + simple(name) + "#" + n, m,
+                PortKit.install("admotive " + simple(name) + "#" + n, m,
                         PortKit.skipVoid(simple(name) + "." + n));
             }
         }
@@ -79,11 +79,11 @@ public final class AdMotivationHook {
     private static void hideAdGreeting(Class<?> cls) {
         Method single = PortKit.findMethodByParamTypeName(cls, "showGreetingResource",
                 "com.alibaba.fastjson.JSONObject");
-        PortKit.install("AD-10 AdGreetingDSLView#showGreetingResource", single,
+        PortKit.install("admotive AdGreetingDSLView#showGreetingResource", single,
                 PortKit.skipVoid("AdGreetingDSLView.showGreetingResource"));
 
         Method list = PortKit.findMethod(cls, "showGreetingResourceList");
-        PortKit.install("AD-10 AdGreetingDSLView#showGreetingResourceList", list,
+        PortKit.install("admotive AdGreetingDSLView#showGreetingResourceList", list,
                 PortKit.skipVoid("AdGreetingDSLView.showGreetingResourceList"));
     }
 

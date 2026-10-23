@@ -39,39 +39,39 @@ public final class PrivacyHooks {
         if (s.isPrivacyEnabled(SettingHelper.pv_clipboard_key)) {
             installClipboard();
         }
-        // PV-03 needs an exact taskName list; not implemented.
+        // startupbl needs an exact taskName list; not implemented.
     }
 
-    // PV-01 OAID
+    // oaid OAID
     private static void installOaid(ClassLoader cl) {
         Class<?> cls = PortKit.findClass(Profile9581.OAID_MANAGER, cl);
         if (cls != null) {
             // o(String) is the real entry: AdOaidUploadTask.init() calls it.
             
             Method o = PortKit.findMethod(cls, "o", String.class);
-            PortKit.install("PV-01 MusicOaidUploadManager#o", o,
+            PortKit.install("oaid MusicOaidUploadManager#o", o,
                     PortKit.skipVoid("MusicOaidUploadManager.o"));
 
             // low-level uploaders, kept as backstop
             for (String name : new String[]{"v", "p", "r"}) {
                 Method m = PortKit.findMethod(cls, name, String.class);
-                PortKit.install("PV-01 MusicOaidUploadManager#" + name, m,
+                PortKit.install("oaid MusicOaidUploadManager#" + name, m,
                         PortKit.skipVoid("MusicOaidUploadManager." + name));
             }
 
             Method u = PortKit.findMethod(cls, "u");
-            PortKit.install("PV-01 MusicOaidUploadManager#u", u,
+            PortKit.install("oaid MusicOaidUploadManager#u", u,
                     PortKit.skipVoid("MusicOaidUploadManager.u"));
         }
         Class<?> task = PortKit.findClass(Profile9581.OAID_TASK, cl);
         if (task != null) {
             Method init = PortKit.findMethod(task, "init");
-            PortKit.install("PV-01 AdOaidUploadTask#init", init,
+            PortKit.install("oaid AdOaidUploadTask#init", init,
                     PortKit.skipVoid("AdOaidUploadTask.init"));
         }
     }
 
-    // PV-02 log-to-file tasks
+    // logtasks log-to-file tasks
     private static void installLogTasks(ClassLoader cl) {
         String[] tasks = {Profile9581.LOG_TO_FILE_TASK, Profile9581.NB_LOG_TASK};
         for (String name : tasks) {
@@ -80,12 +80,12 @@ public final class PrivacyHooks {
                 continue;
             }
             Method init = PortKit.findMethod(cls, "init");
-            PortKit.install("PV-02 " + simple(name) + "#init", init,
+            PortKit.install("logtasks " + simple(name) + "#init", init,
                     PortKit.skipVoid(simple(name) + ".init"));
         }
     }
 
-    // PV-04 APM
+    // apm APM
     private static void installApm(ClassLoader cl) {
         Class<?> cls = PortKit.findClass(Profile9581.STATISTIC_IMPL, cl);
         if (cls == null) {
@@ -94,43 +94,43 @@ public final class PrivacyHooks {
         // logApm / forceApmUpload only; init left intact.
         // fastjson is not a compile-time dependency; match by type name.
         Method logApm = PortKit.findMethodByParamTypeName(cls, "logApm", "com.alibaba.fastjson.JSONObject");
-        PortKit.install("PV-04 StatisticImpl#logApm", logApm,
+        PortKit.install("apm StatisticImpl#logApm", logApm,
                 PortKit.skipVoid("StatisticImpl.logApm"));
         Method force = PortKit.findMethod(cls, "forceApmUpload");
-        PortKit.install("PV-04 StatisticImpl#forceApmUpload", force,
+        PortKit.install("apm StatisticImpl#forceApmUpload", force,
                 PortKit.skipVoid("StatisticImpl.forceApmUpload"));
     }
 
-    // PV-05 statistics
+    // stats statistics
     private static void installStats(ClassLoader cl) {
         Class<?> cls = PortKit.findClass(Profile9581.STATISTIC_IMPL, cl);
         if (cls != null) {
             // real uploads only; init and local logs untouched
-            installNoArgVoid(cls, "forceUpload", "PV-05");
-            installObjVoid(cls, "logMonitor", "PV-05");
-            installObjVoid(cls, "logRealTimeMonitor", "PV-05");
+            installNoArgVoid(cls, "forceUpload", "stats");
+            installObjVoid(cls, "logMonitor", "stats");
+            installObjVoid(cls, "logRealTimeMonitor", "stats");
         }
         // disable the sampling switch
         Class<?> monitor = PortKit.findClass(Profile9581.LOG_MONITOR, cl);
         if (monitor != null) {
             Method b = PortKit.findMethod(monitor, "b");
-            PortKit.installBool("PV-05 LogMonitorConfigManager#b", b, false);
+            PortKit.installBool("stats LogMonitorConfigManager#b", b, false);
         }
     }
 
-    // PV-06 clipboard
+    // clipboard clipboard
     private static void installClipboard() {
         try {
             Method m = ClipboardManager.class.getMethod("getPrimaryClip");
-            PortKit.install("PV-06 ClipboardManager#getPrimaryClip", m, new MethodHook() {
+            PortKit.install("clipboard ClipboardManager#getPrimaryClip", m, new MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    PortKit.hit("PV-06 clipboard blocked");
+                    PortKit.hit("clipboard clipboard blocked");
                     param.setResult(null);
                 }
             });
         } catch (Throwable t) {
-            XposedCompat.logDebug("PV-06 clipboard hook failed: " + t);
+            XposedCompat.logDebug("clipboard clipboard hook failed: " + t);
         }
     }
 

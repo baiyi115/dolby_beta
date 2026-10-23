@@ -50,7 +50,7 @@ public final class AdHooks {
         }
     }
 
-    /** :play installs only the audio clip hook (AD-09). */
+    /** :play installs only the audio clip hook (audioclip). */
     public static void installPlayProcess(Context context) {
         SettingHelper s = SettingHelper.getInstance();
         if (s == null || !s.isAdEnabled(SettingHelper.ad_audio_clip_key)) {

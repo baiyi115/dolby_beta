@@ -21,7 +21,7 @@ public final class AdReportHook {
         Class<?> reportTask = PortKit.findClass(Profile9581.AD_REPORT_TASK, cl);
         if (reportTask != null) {
             Method execute = PortKit.findMethod(reportTask, "execute");
-            PortKit.installBool("AD-03 AdCloudReportTask#execute", execute, true);
+            PortKit.installBool("adreport AdCloudReportTask#execute", execute, true);
         }
 
         // 2. silent external launch; startApp is 4-arg on 9.5.81
@@ -36,13 +36,13 @@ public final class AdReportHook {
                 if (rt != boolean.class && rt != Boolean.class) {
                     continue;
                 }
-                if (PortKit.installBool("AD-03 StartAppHelper$b#startApp("
+                if (PortKit.installBool("adreport StartAppHelper$b#startApp("
                         + m.getParameterTypes().length + ")", m, false)) {
                     hooked++;
                 }
             }
             if (hooked == 0) {
-                XposedCompat.logDebug("AD-03 StartAppHelper$b.startApp not found");
+                XposedCompat.logDebug("adreport StartAppHelper$b.startApp not found");
             }
         }
 
@@ -50,7 +50,7 @@ public final class AdReportHook {
         Class<?> deeplinkPre = PortKit.findClass(Profile9581.DEEPLINK_PRE, cl);
         if (deeplinkPre != null) {
             Method init = PortKit.findMethod(deeplinkPre, "init");
-            PortKit.install("AD-03 AdExposureDeeplinkPreRequestTask#init", init,
+            PortKit.install("adreport AdExposureDeeplinkPreRequestTask#init", init,
                     PortKit.skipVoid("AdExposureDeeplinkPreRequestTask.init"));
         }
 
@@ -58,7 +58,7 @@ public final class AdReportHook {
         Class<?> deeplink = PortKit.findClass(Profile9581.DEEPLINK_TASK, cl);
         if (deeplink != null) {
             Method init = PortKit.findMethod(deeplink, "init");
-            PortKit.install("AD-03 AdExposureDeeplinkTask#init", init,
+            PortKit.install("adreport AdExposureDeeplinkTask#init", init,
                     PortKit.skipVoid("AdExposureDeeplinkTask.init"));
         }
     }

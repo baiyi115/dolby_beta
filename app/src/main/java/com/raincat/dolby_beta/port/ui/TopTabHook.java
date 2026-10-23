@@ -20,7 +20,7 @@ public final class TopTabHook {
 
     public static void install(Context context, Set<String> keepSet) {
         if (keepSet == null || keepSet.isEmpty()) {
-            XposedCompat.logInfo("UI-04 keep list empty; filtering skipped");
+            XposedCompat.logInfo("toptabs keep list empty; filtering skipped");
             return;
         }
         ClassLoader cl = context.getClassLoader();
@@ -29,7 +29,7 @@ public final class TopTabHook {
         Class<?> adapter = PortKit.findClass(Profile9581.TOP_TAB_ADAPTER, cl);
         if (adapter != null) {
             Method t0 = PortKit.findMethod(adapter, "T0", List.class);
-            PortKit.install("UI-04 dr.h#T0", t0, new MethodHook() {
+            PortKit.install("toptabs dr.h#T0", t0, new MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     try {
@@ -42,7 +42,7 @@ public final class TopTabHook {
                             args[0] = filtered;
                         }
                     } catch (Throwable t) {
-                        XposedCompat.logDebug("UI-04 T0 filter failed: " + t);
+                        XposedCompat.logDebug("toptabs T0 filter failed: " + t);
                     }
                 }
             });
@@ -51,9 +51,9 @@ public final class TopTabHook {
         // 2. unlock delete/drag in the tab manager
         Class<?> tabInfo = PortKit.findClass(Profile9581.TOP_TAB_INFO, cl);
         if (tabInfo != null) {
-            PortKit.installBool("UI-04 HomeTopTabInfo#getCanDelete",
+            PortKit.installBool("toptabs HomeTopTabInfo#getCanDelete",
                     PortKit.findMethod(tabInfo, "getCanDelete"), true);
-            PortKit.installBool("UI-04 HomeTopTabInfo#getCanDrag",
+            PortKit.installBool("toptabs HomeTopTabInfo#getCanDrag",
                     PortKit.findMethod(tabInfo, "getCanDrag"), true);
         }
     }
@@ -74,11 +74,11 @@ public final class TopTabHook {
         }
         if (out.isEmpty() || out.size() >= list.size()) {
             if (out.isEmpty()) {
-                XposedCompat.logInfo("UI-04 keepSet matched nothing; filtering skipped");
+                XposedCompat.logInfo("toptabs keepSet matched nothing; filtering skipped");
             }
             return null;
         }
-        PortKit.hit("UI-04 filtered " + list.size() + " -> " + out.size());
+        PortKit.hit("toptabs filtered " + list.size() + " -> " + out.size());
         return out;
     }
 

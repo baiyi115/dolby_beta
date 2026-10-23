@@ -39,17 +39,17 @@ public final class SplashAdHook {
         // 1. final display check; the only (AdInfo)Z in the class
         if (adInfo != null) {
             Method e = PortKit.findMethod(manager, "E", adInfo);
-            PortKit.installBool("AD-01 LoadingAdManager#E", e, false);
+            PortKit.installBool("splash LoadingAdManager#E", e, false);
         }
 
         // 2. warm start
         Method g = PortKit.findMethod(manager, "G", Activity.class);
-        PortKit.install("AD-01 LoadingAdManager#G", g,
+        PortKit.install("splash LoadingAdManager#G", g,
                 PortKit.skipVoid("LoadingAdManager.G"));
 
         // 3. data source
         Method o = PortKit.findMethod(manager, "o", boolean.class);
-        PortKit.install("AD-01 LoadingAdManager#o", o, new MethodHook() {
+        PortKit.install("splash LoadingAdManager#o", o, new MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) {
                 PortKit.hit("LoadingAdManager.o -> empty list");
@@ -64,7 +64,7 @@ public final class SplashAdHook {
             return;
         }
         Method onCreate = PortKit.findMethod(cls, "onCreate", Bundle.class);
-        PortKit.install("AD-01 LoadingAdActivity#onCreate", onCreate, new MethodHook() {
+        PortKit.install("splash LoadingAdActivity#onCreate", onCreate, new MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 try {
@@ -76,7 +76,7 @@ public final class SplashAdHook {
                         }
                     }
                 } catch (Throwable t) {
-                    XposedCompat.logDebug("AD-01 finish failed: " + t);
+                    XposedCompat.logDebug("splash finish failed: " + t);
                 }
             }
         });
@@ -92,7 +92,7 @@ public final class SplashAdHook {
             return;
         }
         Method onViewCreated = PortKit.findMethod(cls, "onViewCreated", View.class, Bundle.class);
-        PortKit.install("AD-01 LoadingAdFragment#onViewCreated", onViewCreated, new MethodHook() {
+        PortKit.install("splash LoadingAdFragment#onViewCreated", onViewCreated, new MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 try {
@@ -108,7 +108,7 @@ public final class SplashAdHook {
                         PortKit.hit("LoadingAdFragment removed from parent");
                     }
                 } catch (Throwable t) {
-                    XposedCompat.logDebug("AD-01 fragment hide failed: " + t);
+                    XposedCompat.logDebug("splash fragment hide failed: " + t);
                 }
             }
         });
@@ -121,7 +121,7 @@ public final class SplashAdHook {
         }
         Method onSensorChanged = PortKit.findMethod(cls, "onSensorChanged",
                 android.hardware.SensorEvent.class);
-        PortKit.install("AD-01 LoadingAdShakeHelper#onSensorChanged", onSensorChanged,
+        PortKit.install("splash LoadingAdShakeHelper#onSensorChanged", onSensorChanged,
                 PortKit.skipVoid("LoadingAdShakeHelper.onSensorChanged"));
     }
 
@@ -135,6 +135,6 @@ public final class SplashAdHook {
             return;
         }
         Method g = PortKit.findMethod(cls, "g");
-        PortKit.installBool("AD-01 o60.w0#g", g, false);
+        PortKit.installBool("splash o60.w0#g", g, false);
     }
 }

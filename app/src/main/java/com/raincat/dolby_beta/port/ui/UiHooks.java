@@ -60,29 +60,29 @@ public final class UiHooks {
         }
     }
 
-    // UI-01 update dialog
+    // update update dialog
 
     
     private static void installUpdate(ClassLoader cl) {
         Class<?> config = PortKit.findClass(Profile9581.UPDATE_CONFIG, cl);
         if (config != null) {
             Method hasNew = PortKit.findMethod(config, "hasNewVersion");
-            PortKit.installBool("UI-01 CMUpdateConfig#hasNewVersion", hasNew, false);
+            PortKit.installBool("update CMUpdateConfig#hasNewVersion", hasNew, false);
         }
 
         Class<?> state = PortKit.findClass(Profile9581.UPDATE_STATE, cl);
         if (state != null) {
-            PortKit.installBool("UI-01 appupdate.d#D(forceUpdate)",
+            PortKit.installBool("update appupdate.d#D(forceUpdate)",
                     PortKit.findMethod(state, "D"), false);
-            PortKit.installBool("UI-01 appupdate.d#I(needPopUp)",
+            PortKit.installBool("update appupdate.d#I(needPopUp)",
                     PortKit.findMethod(state, "I"), false);
-            PortKit.installBool("UI-01 appupdate.d#C",
+            PortKit.installBool("update appupdate.d#C",
                     PortKit.findMethod(state, "C"), false);
         }
     }
 
     /**
-     * UI-02 startup delay.
+     * startdelay startup delay.
      *
      * StartTimeHandler delay getters are only reached through same-package invoke-static,
      * which Xposed cannot intercept. MainActivity.isNeedDelay()Z is the instance gate.
@@ -93,10 +93,10 @@ public final class UiHooks {
             return;
         }
         Method need = PortKit.findMethod(activity, "isNeedDelay");
-        PortKit.installBool("UI-02 MainActivity#isNeedDelay", need, false);
+        PortKit.installBool("startdelay MainActivity#isNeedDelay", need, false);
     }
 
-    // UI-07 hints and bubbles
+    // hints hints and bubbles
     private static void installHints(ClassLoader cl) {
         int hooked = 0;
         for (String className : Profile9581.HINT_VIEWS) {
@@ -110,18 +110,18 @@ public final class UiHooks {
                 if (m == null) {
                     continue;
                 }
-                PortKit.install("UI-07 " + simple(className) + "#" + name, m,
+                PortKit.install("hints " + simple(className) + "#" + name, m,
                         PortKit.skipVoid(simple(className) + "." + name));
                 hooked++;
                 break;
             }
         }
-        XposedCompat.logInfo("UI-07 hint hooks installed=" + hooked);
+        XposedCompat.logInfo("hints hint hooks installed=" + hooked);
     }
 
-    // UI-08 autoplay
+    // autoplay autoplay
     /**
-     * UI-08 autoplay.
+     * autoplay autoplay.
      *
      * mt0.d a/b/c/d/e are bluetooth and car autoplay switches (all read
      * setting#autoPlayConfig). ev0.j g/h are the launch-autoplay master switch.
@@ -133,7 +133,7 @@ public final class UiHooks {
         if (bluetooth != null) {
             for (String name : new String[]{"a", "b", "c", "d", "e"}) {
                 Method m = PortKit.findMethod(bluetooth, name);
-                PortKit.installBool("UI-08 mt0.d#" + name, m, false);
+                PortKit.installBool("autoplay mt0.d#" + name, m, false);
             }
         }
 
@@ -141,18 +141,18 @@ public final class UiHooks {
         if (master != null) {
             for (String name : new String[]{"g", "h"}) {
                 Method m = PortKit.findMethod(master, name);
-                PortKit.installBool("UI-08 ev0.j#" + name, m, false);
+                PortKit.installBool("autoplay ev0.j#" + name, m, false);
             }
         }
 
         Class<?> social = PortKit.findClass(Profile9581.AUTOPLAY_SOCIAL, cl);
         if (social != null) {
             Method j = PortKit.findMethod(social, "j");
-            PortKit.installBool("UI-08 ot0.r#j(mlogPlayIn4G)", j, false);
+            PortKit.installBool("autoplay ot0.r#j(mlogPlayIn4G)", j, false);
         }
     }
 
-    // UI-10 player hints
+    // playerhints player hints
     private static void installPlayerHints(ClassLoader cl) {
         String[] targets = {
                 Profile9581.PLAYER_COMMENT_POP,
@@ -167,7 +167,7 @@ public final class UiHooks {
             for (String method : new String[]{"show", "maybeDisplayHint", "display"}) {
                 Method m = PortKit.findMethod(cls, method);
                 if (m != null) {
-                    PortKit.install("UI-10 " + simple(name) + "#" + method, m,
+                    PortKit.install("playerhints " + simple(name) + "#" + method, m,
                             PortKit.skipVoid(simple(name) + "." + method));
                     break;
                 }
@@ -175,7 +175,7 @@ public final class UiHooks {
         }
     }
 
-    // UI-11 search hot words
+    // searchguide search hot words
     private static void installSearchGuide(ClassLoader cl) {
         Class<?> cls = PortKit.findClass(Profile9581.SEARCH_GUIDE, cl);
         if (cls == null) {
@@ -184,10 +184,10 @@ public final class UiHooks {
         for (Method m : cls.getDeclaredMethods()) {
             if (m.getParameterTypes().length == 0
                     && java.util.List.class.isAssignableFrom(m.getReturnType())) {
-                PortKit.install("UI-11 SearchGuide#" + m.getName(), m, new MethodHook() {
+                PortKit.install("searchguide SearchGuide#" + m.getName(), m, new MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        PortKit.hit("UI-11 SearchGuide empty");
+                        PortKit.hit("searchguide SearchGuide empty");
                         param.setResult(new java.util.ArrayList<>());
                     }
                 });
@@ -195,7 +195,7 @@ public final class UiHooks {
         }
     }
 
-    // UI-14 lyrics promotion
+    // lyrics lyrics promotion
     private static void installLyricsHint(ClassLoader cl) {
         String[] targets = {
                 Profile9581.LYRICS_BOTTOM_HINT,
@@ -209,7 +209,7 @@ public final class UiHooks {
             for (String method : new String[]{"show", "maybeDisplayHint"}) {
                 Method m = PortKit.findMethod(cls, method);
                 if (m != null) {
-                    PortKit.install("UI-14 " + simple(name) + "#" + method, m,
+                    PortKit.install("lyrics " + simple(name) + "#" + method, m,
                             PortKit.skipVoid(simple(name) + "." + method));
                     break;
                 }
@@ -217,7 +217,7 @@ public final class UiHooks {
         }
     }
 
-    // UI-15 community and live
+    // community community and live
     private static void installCommunityLive(ClassLoader cl) {
         String[] targets = {
                 Profile9581.LIVE_PROMOTION,
@@ -233,7 +233,7 @@ public final class UiHooks {
             for (String method : new String[]{"show", "maybeDisplayHint", "display"}) {
                 Method m = PortKit.findMethod(cls, method);
                 if (m != null) {
-                    PortKit.install("UI-15 " + simple(name) + "#" + method, m,
+                    PortKit.install("community " + simple(name) + "#" + method, m,
                             PortKit.skipVoid(simple(name) + "." + method));
                     break;
                 }

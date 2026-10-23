@@ -12,7 +12,7 @@ import com.raincat.dolby_beta.xposed.XposedCompat;
 import java.lang.reflect.Method;
 
 /**
- * AD-02 / 04 / 05 / 06 / 07 / 08 / 09 —— 除开屏外其余广告入口。
+ * 除开屏外的其余广告入口：运营弹窗、搜索、预加载、信息流、评论、播放页、音频贴片。
  *
  * 全部坐标来自 MT 对 9.5.81 的逐条实测（PORT_VERIFY_9581.md）。
  * 曾经的错误实现「扫所有返回 View 的无参方法」已删除：这些类里根本不存在这种签名。
@@ -22,7 +22,7 @@ public final class AdMiscHooks {
     private AdMiscHooks() {
     }
 
-    // AD-02 launch dialog
+    // launch dialog
 
     
     public static void installLaunchDialog(Context context) {
@@ -33,9 +33,9 @@ public final class AdMiscHooks {
         Class<?> data = PortKit.findClass(Profile9581.LAUNCH_DIALOG_DATA,
                 context.getClassLoader());
 
-        skipOn("AD-02 LaunchDialog#showCompactDialog", cls, "showCompactDialog", Activity.class, data);
-        skipOn("AD-02 LaunchDialog#showSinglePicDialog", cls, "showSinglePicDialog", Activity.class, data);
-        skipOn("AD-02 LaunchDialog#showMultiModulePopUpDialog", cls, "showMultiModulePopUpDialog",
+        skipOn("launchdialog LaunchDialog#showCompactDialog", cls, "showCompactDialog", Activity.class, data);
+        skipOn("launchdialog LaunchDialog#showSinglePicDialog", cls, "showSinglePicDialog", Activity.class, data);
+        skipOn("launchdialog LaunchDialog#showMultiModulePopUpDialog", cls, "showMultiModulePopUpDialog",
                 Activity.class, data);
 
         // three-arg overload carries an OnDismissListener
@@ -46,12 +46,12 @@ public final class AdMiscHooks {
             if (m.getParameterTypes().length != 3) {
                 continue;
             }
-            PortKit.install("AD-02 LaunchDialog#showPictureDialog(3)", m,
+            PortKit.install("launchdialog LaunchDialog#showPictureDialog(3)", m,
                     PortKit.skipVoid("LaunchDialog.showPictureDialog"));
         }
     }
 
-    // AD-04 search ads
+    // search ads
 
     /**
      * RNSearchAdViewManger 没有 View getter。真实入口是 createViewInstance，
@@ -72,17 +72,17 @@ public final class AdMiscHooks {
             if (m.getParameterTypes().length != 1) {
                 continue;
             }
-            PortKit.install("AD-04 RNSearchAdViewManger#createViewInstance", m, new MethodHook() {
+            PortKit.install("searchad RNSearchAdViewManger#createViewInstance", m, new MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     try {
                         Object ctx = param.args[0];
                         if (ctx instanceof Context) {
-                            PortKit.hit("AD-04 search ad view -> empty");
+                            PortKit.hit("searchad search ad view -> empty");
                             param.setResult(new View((Context) ctx));
                         }
                     } catch (Throwable t) {
-                        XposedCompat.logDebug("AD-04 createViewInstance failed: " + t);
+                        XposedCompat.logDebug("searchad createViewInstance failed: " + t);
                     }
                 }
             });
@@ -95,7 +95,7 @@ public final class AdMiscHooks {
         PortKit.findClass(Profile9581.SEARCH_AD_MEDIUM, cl);
     }
 
-    // AD-05 preload
+    // preload
 
     /** Startup tasks; init() verified present on 9.5.81. */
     public static void installPreload(Context context) {
@@ -111,20 +111,20 @@ public final class AdMiscHooks {
                 continue;
             }
             Method init = PortKit.findMethod(cls, "init");
-            PortKit.install("AD-05 " + simple(task) + "#init", init,
+            PortKit.install("adpreload " + simple(task) + "#init", init,
                     PortKit.skipVoid(simple(task) + ".init"));
         }
     }
 
-    // AD-06/07 feed and comments
+    // feed and comments
 
     /** Banner.isAdBanner()Z is the single gate for feed and comment ads. */
     public static void installFeedAd(Context context) {
-        hookBanner(context, "AD-06");
+        hookBanner(context, "feedad");
     }
 
     public static void installCommentAd(Context context) {
-        hookBanner(context, "AD-07");
+        hookBanner(context, "commentad");
 
         ClassLoader cl = context.getClassLoader();
         for (String name : new String[]{Profile9581.SPECIAL_COMMENT, Profile9581.COMMENT,
@@ -150,7 +150,7 @@ public final class AdMiscHooks {
                 if (lower.contains("load") || lower.contains("header") || lower.contains("lottery")) {
                     continue;
                 }
-                PortKit.installBool("AD-07 " + simple(name) + "#" + n, m, false);
+                PortKit.installBool("commentad " + simple(name) + "#" + n, m, false);
             }
         }
     }
@@ -165,7 +165,7 @@ public final class AdMiscHooks {
     }
 
     /**
-     * AD-08 player ads and gift stickers.
+     * playerad player ads and gift stickers.
      *
      * PlayerAdJarDelegate.j(Ad, ViewGroup, ViewGroup) is the injection point; q(Ad) preloads.
      * MusicGiftModel is a pure data class with no methods of its own, so the gift row is gated
@@ -183,21 +183,21 @@ public final class AdMiscHooks {
         }
         Method j = PortKit.findMethod(delegate, "j", ad,
                 android.view.ViewGroup.class, android.view.ViewGroup.class);
-        PortKit.install("AD-08 PlayerAdJarDelegate#j", j,
+        PortKit.install("playerad PlayerAdJarDelegate#j", j,
                 PortKit.skipVoid("PlayerAdJarDelegate.j"));
 
         Method q = PortKit.findMethod(delegate, "q", ad);
-        PortKit.install("AD-08 PlayerAdJarDelegate#q", q,
+        PortKit.install("playerad PlayerAdJarDelegate#q", q,
                 PortKit.skipVoid("PlayerAdJarDelegate.q"));
 
         Method m = PortKit.findMethod(delegate, "m",
                 PortKit.findClass(Profile9581.MUSIC_GIFT, cl));
-        PortKit.install("AD-08 PlayerAdJarDelegate#m(gift)", m,
+        PortKit.install("playerad PlayerAdJarDelegate#m(gift)", m,
                 PortKit.skipVoid("PlayerAdJarDelegate.m"));
     }
 
     /**
-     * AD-09 audio clip and podcast video.
+     * audioclip audio clip and podcast video.
      *
      * AdAudioClipManager exposes no View getter; e(String, String) starts the clip, a(Message)
      * drives the state machine, and isPlaying() is the gate the player reads.
@@ -207,14 +207,14 @@ public final class AdMiscHooks {
         Class<?> clip = PortKit.findClass(Profile9581.AUDIO_CLIP, cl);
         if (clip != null) {
             Method e = PortKit.findMethod(clip, "e", String.class, String.class);
-            PortKit.install("AD-09 AdAudioClipManager#e", e,
+            PortKit.install("audioclip AdAudioClipManager#e", e,
                     PortKit.skipVoid("AdAudioClipManager.e"));
 
             Method isPlaying = PortKit.findMethod(clip, "isPlaying");
-            PortKit.installBool("AD-09 AdAudioClipManager#isPlaying", isPlaying, false);
+            PortKit.installBool("audioclip AdAudioClipManager#isPlaying", isPlaying, false);
 
             Method a = PortKit.findMethod(clip, "a", android.os.Message.class);
-            PortKit.install("AD-09 AdAudioClipManager#a", a,
+            PortKit.install("audioclip AdAudioClipManager#a", a,
                     PortKit.skipVoid("AdAudioClipManager.a"));
         }
 
@@ -226,7 +226,7 @@ public final class AdMiscHooks {
                 continue;
             }
             Method show = PortKit.findMethod(cls, "showVerticalAdMode");
-            PortKit.install("AD-09 " + simple(name) + "#showVerticalAdMode", show,
+            PortKit.install("audioclip " + simple(name) + "#showVerticalAdMode", show,
                     PortKit.skipVoid(simple(name) + ".showVerticalAdMode"));
         }
     }
