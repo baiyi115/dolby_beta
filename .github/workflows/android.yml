@@ -41,9 +41,41 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # Signing needs the KEY_* Gradle properties; without them the release variant builds unsigned.
+      # signing.properties and the keystore are kept out of the repository, so CI rebuilds
+      # them from secrets. When KEYSTORE_BASE64 is unset the step still succeeds and the
+      # release variant builds unsigned, matching build.gradle's four-property check.
+      - name: Restore signing material
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "KEYSTORE_BASE64 not configured; building unsigned"
+            exit 0
+          fi
+          # app/build.gradle resolves KEYSTORE_FILE relative to the app module.
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > app/lin.jks
+          {
+            echo "KEYSTORE_FILE = ./lin.jks"
+            echo "KEYSTORE_PASSWORD = $KEYSTORE_PASSWORD"
+            echo "KEY_ALIAS = $KEY_ALIAS"
+            echo "KEY_PASSWORD = $KEY_PASSWORD"
+          } > app/signing.properties
+          echo "signing material restored"
+
       - name: Build with Gradle
         run: ./gradlew app:assembleRelease
+
+      - name: Verify APK is signed
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          if unzip -l "$APK" | grep -q 'META-INF/CERT.RSA'; then
+            echo "signed: $APK"
+          else
+            echo "::warning::APK is unsigned (no signing secrets configured)"
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
