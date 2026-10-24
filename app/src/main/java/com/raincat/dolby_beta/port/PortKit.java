@@ -29,30 +29,36 @@ public final class PortKit {
         }
     }
 
-    /** Refuses to guess when a name has more than one overload. */
+    /**
+     * Name-only lookup. Walks the superclass chain and refuses to guess when the declaring class
+     * has more than one overload. The previous version only scanned {@code getDeclaredMethods()},
+     * so a method inherited from a base class was reported as missing.
+     */
     public static Method findMethod(Class<?> cls, String name) {
         if (cls == null || name == null) {
             return null;
         }
-        try {
-            Method found = null;
-            for (Method m : cls.getDeclaredMethods()) {
-                if (!name.equals(m.getName())) {
-                    continue;
+        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+            try {
+                Method found = null;
+                for (Method m : c.getDeclaredMethods()) {
+                    if (!name.equals(m.getName())) {
+                        continue;
+                    }
+                    if (found != null) {
+                        XposedCompat.logDebug("PortKit ambiguous method " + cls.getName() + "#" + name);
+                        return null;
+                    }
+                    found = m;
                 }
                 if (found != null) {
-                    XposedCompat.logDebug("PortKit ambiguous method " + cls.getName() + "#" + name);
-                    return null;
+                    found.setAccessible(true);
+                    return found;
                 }
-                found = m;
+            } catch (Throwable ignored) {
             }
-            if (found != null) {
-                found.setAccessible(true);
-            }
-            return found;
-        } catch (Throwable t) {
-            return null;
         }
+        return null;
     }
 
     /** Exact-signature lookup walking up the superclass chain. */
@@ -81,22 +87,32 @@ public final class PortKit {
         if (cls == null || name == null || paramTypeName == null) {
             return null;
         }
-        try {
-            for (Method m : cls.getDeclaredMethods()) {
-                if (!name.equals(m.getName())) {
-                    continue;
+        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+            try {
+                Method found = null;
+                for (Method m : c.getDeclaredMethods()) {
+                    if (!name.equals(m.getName())) {
+                        continue;
+                    }
+                    Class<?>[] types = m.getParameterTypes();
+                    if (types.length != 1 || !paramTypeName.equals(types[0].getName())) {
+                        continue;
+                    }
+                    if (found != null) {
+                        // Two overloads with the same parameter type name; picking the first one
+                        // silently hooked an arbitrary method.
+                        XposedCompat.logDebug("PortKit ambiguous method " + cls.getName() + "#" + name
+                                + "(" + paramTypeName + ")");
+                        return null;
+                    }
+                    found = m;
                 }
-                Class<?>[] types = m.getParameterTypes();
-                if (types.length != 1) {
-                    continue;
+                if (found != null) {
+                    found.setAccessible(true);
+                    return found;
                 }
-                if (!paramTypeName.equals(types[0].getName())) {
-                    continue;
-                }
-                m.setAccessible(true);
-                return m;
+            } catch (Throwable ignored) {
             }
-        } catch (Throwable ignored) {
         }
         return null;
     }
@@ -160,5 +176,50 @@ public final class PortKit {
             return false;
         }
         return install(label, m, constBool(label, value));
+    }
+
+    /**
+     * Skips a method whose return type is only known at runtime, returning that type's zero value.
+     * Reference returns are refused because null could NPE at the call site; Boolean is the one
+     * exception and maps to false so an unboxing caller stays safe.
+     */
+    public static boolean installSkipDefault(String label, Method m) {
+        if (m == null) {
+            return false;
+        }
+        Class<?> rt = m.getReturnType();
+        if (rt != void.class && !rt.isPrimitive() && rt != Boolean.class) {
+            XposedCompat.logError("PortKit skipDefault " + label + " returns " + rt.getName()
+                    + "; not skipped");
+            return false;
+        }
+        return install(label, m, new MethodHook() {
+            @Override
+            protected boolean usesArgs() {
+                return false;
+            }
+
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                hit(label);
+                param.setResult(zeroValue(((Method) param.method).getReturnType()));
+            }
+        });
+    }
+
+    private static Object zeroValue(Class<?> type) {
+        if (type == void.class)
+            return null;
+        if (type == boolean.class || type == Boolean.class)
+            return false;
+        if (type == char.class)
+            return '\0';
+        if (type == long.class)
+            return 0L;
+        if (type == float.class)
+            return 0f;
+        if (type == double.class)
+            return 0d;
+        return 0;
     }
 }
