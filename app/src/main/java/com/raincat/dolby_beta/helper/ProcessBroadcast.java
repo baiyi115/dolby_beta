@@ -1,5 +1,6 @@
 package com.raincat.dolby_beta.helper;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -38,11 +39,33 @@ public final class ProcessBroadcast {
     }
 
     public static void sendHookPlayProcess(Context context) {
-        context.sendBroadcast(new Intent(HOOK_PLAY_PROCESS));
+        sendPrivate(context, new Intent(HOOK_PLAY_PROCESS));
     }
 
     public static void sendPlayProcessReady(Context context) {
-        context.sendBroadcast(new Intent(PLAY_PROCESS_READY));
+        sendPrivate(context, new Intent(PLAY_PROCESS_READY));
+    }
+
+    /**
+     * Registers a receiver that only accepts broadcasts from this app (same uid), including the
+     * other process. Without the flag any installed app could send these actions and make the
+     * module reinstall hooks or pop the unlock notification.
+     *
+     * RECEIVER_NOT_EXPORTED exists since API 33; below that the platform has no flag and the
+     * receiver stays addressable by other apps, but the sends are still package-scoped.
+     */
+    public static void registerReceiver(Context context, BroadcastReceiver receiver, IntentFilter filter) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            context.registerReceiver(receiver, filter);
+        }
+    }
+
+    /** Restricts delivery to this package; the receiver is not exported either. */
+    public static void sendPrivate(Context context, Intent intent) {
+        intent.setPackage(context.getPackageName());
+        context.sendBroadcast(intent);
     }
 
     public static void handleNotification(Context context, Intent intent) {

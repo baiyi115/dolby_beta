@@ -281,7 +281,7 @@ public class ScriptHelper {
                     intent.putExtra("message", line);
                     intent.putExtra("title", "脚本产生如下错误信息，若脚本因此无法运行请提issue");
                     if (neteaseContext != null)
-                        neteaseContext.sendBroadcast(intent);
+                        ProcessBroadcast.sendPrivate(neteaseContext, intent);
                 } else if (line.contains("HTTP Server running")) {
                     XposedCompat.logInfo("UNM script running");
                     if (neteaseContext != null && ExtraHelper.getExtraDate(ExtraHelper.SCRIPT_STATUS).equals("0"))

@@ -29,8 +29,19 @@ public class HookOther {
     private static String PACKAGE_NAME;
     int versionCode = 0;
 
-    public boolean playProcessInit = false;
-    public boolean mainProcessInit = false;
+    public volatile boolean playProcessInit = false;
+    public volatile boolean mainProcessInit = false;
+
+    /** Repeated ready announcements must not reinstall the play-process hooks. */
+    private volatile boolean hookPlayProcessRequested = false;
+    private volatile boolean playDeferredInstalled = false;
+
+    private void maybeHookPlayProcess(Context context) {
+        if (!mainProcessInit || !playProcessInit || hookPlayProcessRequested)
+            return;
+        hookPlayProcessRequested = true;
+        ProcessBroadcast.sendHookPlayProcess(context);
+    }
 
     public HookOther(ClassLoader classLoader, String packageName) {
         PACKAGE_NAME=packageName;
@@ -85,17 +96,15 @@ public class HookOther {
                                 new HideTabHook(context, versionCode);
                                 new CdnHook(context, versionCode);
                                 mainProcessInit = true;
-                                if (mainProcessInit && playProcessInit)
-                                    ProcessBroadcast.sendHookPlayProcess(context);
+                                maybeHookPlayProcess(context);
                             });
-                            context.registerReceiver(new BroadcastReceiver() {
+                            ProcessBroadcast.registerReceiver(context, new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
                                     String action = intent.getAction();
                                     if (ProcessBroadcast.PLAY_PROCESS_READY.equals(action)) {
                                         playProcessInit = true;
-                                        if (mainProcessInit && playProcessInit)
-                                            ProcessBroadcast.sendHookPlayProcess(context);
+                                        maybeHookPlayProcess(context);
                                     } else if (ProcessBroadcast.SEND_NOTIFICATION.equals(action)) {
                                         ProcessBroadcast.handleNotification(context, intent);
                                         XposedCompat.logInfo(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
@@ -105,10 +114,13 @@ public class HookOther {
                         } else if (processName.equals(PACKAGE_NAME + ":play") && SettingHelper.getInstance().getSetting(SettingHelper.master_key)) {
 
                             new ProxyHook(context, true);
-                            context.registerReceiver(new BroadcastReceiver() {
+                            ProcessBroadcast.registerReceiver(context, new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
                                     if (ProcessBroadcast.HOOK_PLAY_PROCESS.equals(intent.getAction())) {
+                                        if (playDeferredInstalled)
+                                            return;
+                                        playDeferredInstalled = true;
                                         ClassHelper.getCacheClassList(context, versionCode, () -> {
                                             new EAPIHook(context);
                                             new CdnHook(context, versionCode);

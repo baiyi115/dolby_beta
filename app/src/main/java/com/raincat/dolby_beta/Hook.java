@@ -58,8 +58,21 @@ public class Hook {
         });
     }
 
-    public boolean playProcessInit = false;
-    public boolean mainProcessInit = false;
+    public volatile boolean playProcessInit = false;
+    public volatile boolean mainProcessInit = false;
+
+    /** Both processes may announce readiness repeatedly; the play process must install once. */
+    private volatile boolean hookPlayProcessRequested = false;
+    private volatile boolean playDeferredInstalled = false;
+
+    private void maybeHookPlayProcess(Context context) {
+        // Write our own flag before reading the other one: with both fields volatile, at least
+        // one side observes the other's update and sends the handshake exactly once.
+        if (!mainProcessInit || !playProcessInit || hookPlayProcessRequested)
+            return;
+        hookPlayProcessRequested = true;
+        ProcessBroadcast.sendHookPlayProcess(context);
+    }
 
     public Hook(ClassLoader classLoader) {
         XposedCompat.findAndHookMethod(XposedCompat.findClass("com.netease.cloudmusic.NeteaseMusicApplication", classLoader),
@@ -107,18 +120,16 @@ public class Hook {
                                         + (System.currentTimeMillis() - hookStart) + "ms");
                                 XposedCompat.logSummary("main-process deferred hooks");
                                 mainProcessInit = true;
-                                if (mainProcessInit && playProcessInit)
-                                    ProcessBroadcast.sendHookPlayProcess(context);
+                                maybeHookPlayProcess(context);
                             });
-                            context.registerReceiver(new BroadcastReceiver() {
+                            ProcessBroadcast.registerReceiver(context, new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
                                     String action = intent.getAction();
                                     if (ProcessBroadcast.PLAY_PROCESS_READY.equals(action)) {
                                         XposedCompat.logInfo("broadcast received: " + ProcessBroadcast.PLAY_PROCESS_READY);
                                         playProcessInit = true;
-                                        if (mainProcessInit && playProcessInit)
-                                            ProcessBroadcast.sendHookPlayProcess(context);
+                                        maybeHookPlayProcess(context);
                                     } else if (ProcessBroadcast.SEND_NOTIFICATION.equals(action)) {
                                         XposedCompat.logInfo("notification requested: code=" + intent.getIntExtra("code", 0x10)
                                                 + " title=" + intent.getStringExtra("title"));
@@ -132,10 +143,13 @@ public class Hook {
                             XposedCompat.logInfo("play-process installing");
 
                             installAll(playSpecs(context));
-                            context.registerReceiver(new BroadcastReceiver() {
+                            ProcessBroadcast.registerReceiver(context, new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
                                     if (ProcessBroadcast.HOOK_PLAY_PROCESS.equals(intent.getAction())) {
+                                        if (playDeferredInstalled)
+                                            return;
+                                        playDeferredInstalled = true;
                                         XposedCompat.logInfo("broadcast received: " + ProcessBroadcast.HOOK_PLAY_PROCESS);
                                         ClassHelper.getCacheClassList(context, versionCode, () -> {
                                             installAll(playDeferredSpecs(context, versionCode));

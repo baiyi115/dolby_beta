@@ -21,6 +21,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.raincat.dolby_beta.helper.ExtraHelper;
+import com.raincat.dolby_beta.helper.ProcessBroadcast;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.utils.Tools;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
@@ -316,7 +317,9 @@ public class SettingHook {
             }
         };
         broadcastReceiverContext = context;
-        context.registerReceiver(broadcastReceiver, intentFilter);
+        // The settings rows send these actions from inside this app; the receiver does not need
+        // to be addressable by other packages.
+        ProcessBroadcast.registerReceiver(context, broadcastReceiver, intentFilter);
     }
 
     private boolean isReceiverUsable(Context context) {
