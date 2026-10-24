@@ -63,7 +63,11 @@ APK: 网易云音乐 9.5.81 (9005081)，MT 工作区 `qfj9xfug`
 - `hideAllViews()` private
 - `createViewInstance(ThemedReactContext)` protected → 返回 RNSearchAdView
 
-⚠️ **需改**：hook `createViewInstance` → 返回 `new View(context)` 或 null；或 hook `setExtraParams`。
+已实装：hook `showAdLargeView` / `showAdMediumView`（均返回 void，直接跳过），保留 RN 侧正常的
+`createViewInstance`。**不要**用 `new View(context)` 顶替 `createViewInstance` 的返回值：它声明返回
+`RNSearchAdView`（另有同名的 PUBLIC BRIDGE SYNTHETIC 重载返回擦除后的 View），调用方会按声明类型
+checkcast；而且原方法还负责设置 `mEmitter`、订阅 ViewModel 的 LiveData、写入 `mViewRef`，跳过它会让
+后续 `setExtraParams` / `hideAllViews` 拿到空字段。
 
 ### AD-05 预加载
 
@@ -187,7 +191,7 @@ APK: 网易云音乐 9.5.81 (9005081)，MT 工作区 `qfj9xfug`
 | 项 | 原因 |
 |---|---|
 | AD-02 | 找错方法名，4 个真实入口都没挂上 |
-| AD-04 | 思路错（没有 View getter），要改 hook `createViewInstance` |
+| AD-04 | 已改为跳过 `showAdLargeView` / `showAdMediumView`；**不**拦 `createViewInstance`（返回类型 + manager 状态） |
 | AD-09 | `AdAudioClipManager` 无 View getter，要改 hook `e(String,String)` / `isPlaying()` |
 | UI-01 | 找错类，应 hook `CMUpdateConfig.hasNewVersion()` |
 | UI-02 | 找错方法，应 hook `isNeedDelayStart()` |

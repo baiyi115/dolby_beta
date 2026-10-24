@@ -2,12 +2,9 @@ package com.raincat.dolby_beta.port.ads;
 
 import android.app.Activity;
 import android.content.Context;
-import android.view.View;
 
 import com.raincat.dolby_beta.port.PortKit;
 import com.raincat.dolby_beta.port.Profile9581;
-import com.raincat.dolby_beta.xposed.MethodHook;
-import com.raincat.dolby_beta.xposed.XposedCompat;
 
 import java.lang.reflect.Method;
 
@@ -54,9 +51,14 @@ public final class AdMiscHooks {
     // search ads
 
     /**
-     * RNSearchAdViewManger 没有 View getter。真实入口是 createViewInstance，
-     * 它返回 RNSearchAdView；返回一个空 View 即可让 RN 侧拿到占位而不渲染广告。
-     * 同时钩掉三个 show*View，阻止已有广告位刷新内容。
+     * RNSearchAdViewManger 没有 View getter。9.5.81 上广告内容由 private 的
+     * showAdLargeView/showAdMediumView 挂到现成的 RNSearchAdView 上，跳过这两个方法即可，
+     * RN 侧仍会正常创建视图，只是不再填充广告。
+     *
+     * 不要拦截 createViewInstance：它除构造视图外还设置 mEmitter、构造并订阅 ViewModel 的
+     * LiveData、写入 mViewRef；用构造出来的空视图顶替会让这些字段保持空值，后续
+     * setExtraParams/hideAllViews 可能 NPE。它声明返回 RNSearchAdView，早先
+     * setResult(new View(ctx)) 还会在调用方按声明类型 checkcast 时抛 ClassCastException。
      */
     public static void installSearchAd(Context context) {
         ClassLoader cl = context.getClassLoader();
@@ -65,34 +67,10 @@ public final class AdMiscHooks {
             return;
         }
 
-        for (Method m : cls.getDeclaredMethods()) {
-            if (!"createViewInstance".equals(m.getName())) {
-                continue;
-            }
-            if (m.getParameterTypes().length != 1) {
-                continue;
-            }
-            PortKit.install("searchad RNSearchAdViewManger#createViewInstance", m, new MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    try {
-                        Object ctx = param.args[0];
-                        if (ctx instanceof Context) {
-                            PortKit.hit("searchad search ad view -> empty");
-                            param.setResult(new View((Context) ctx));
-                        }
-                    } catch (Throwable t) {
-                        XposedCompat.logDebug("searchad createViewInstance failed: " + t);
-                    }
-                }
-            });
-        }
-
-        
-        
-        
-        PortKit.findClass(Profile9581.SEARCH_AD_LARGE, cl);
-        PortKit.findClass(Profile9581.SEARCH_AD_MEDIUM, cl);
+        PortKit.installSkipDefault("searchad RNSearchAdViewManger#showAdLargeView",
+                PortKit.findMethod(cls, "showAdLargeView"));
+        PortKit.installSkipDefault("searchad RNSearchAdViewManger#showAdMediumView",
+                PortKit.findMethod(cls, "showAdMediumView"));
     }
 
     // preload
