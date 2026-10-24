@@ -23,6 +23,7 @@ import com.raincat.dolby_beta.hook.ProxyHook;
 import com.raincat.dolby_beta.hook.RnSettingEntryHook;
 import com.raincat.dolby_beta.hook.SettingHook;
 import com.raincat.dolby_beta.hook.UserProfileHook;
+import com.raincat.dolby_beta.port.Profile9581;
 import com.raincat.dolby_beta.port.ads.AdHooks;
 import com.raincat.dolby_beta.port.privacy.PrivacyHooks;
 import com.raincat.dolby_beta.port.ui.UiHooks;
@@ -100,6 +101,9 @@ public class Hook {
                         XposedCompat.logInfo("attachBaseContext: process=" + processName
                                 + " versionCode=" + versionCode
                                 + " master=" + SettingHelper.getInstance().getSetting(SettingHelper.master_key));
+                        if (!portProfileMatches(versionCode))
+                            XposedCompat.logInfo("ported ad/UI/privacy hooks target versionCode "
+                                    + Profile9581.VERSION_CODE + ", current " + versionCode + "; skipped");
                         if (processName.equals(PACKAGE_NAME)) {
                             installCrashLogger();
 
@@ -142,7 +146,7 @@ public class Hook {
                             installCrashLogger();
                             XposedCompat.logInfo("play-process installing");
 
-                            installAll(playSpecs(context));
+                            installAll(playSpecs(context, versionCode));
                             ProcessBroadcast.registerReceiver(context, new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
@@ -206,6 +210,15 @@ public class Hook {
         }
     }
 
+    /**
+     * The port package hard-codes 9.5.81 obfuscated class/method coordinates. On another build
+     * those names can resolve to unrelated methods, so the ported hooks are installed only on the
+     * verified version instead of silently hooking the wrong thing.
+     */
+    private static boolean portProfileMatches(int versionCode) {
+        return versionCode == Profile9581.VERSION_CODE;
+    }
+
     /** Entry points, installed before the master switch is consulted. */
     private java.util.List<HookSpec> alwaysSpecs(Context context, int versionCode) {
         return java.util.Arrays.asList(
@@ -228,10 +241,12 @@ public class Hook {
                         }),
                 new HookSpec("AdAndUpdateHook", null, () -> new AdAndUpdateHook(context, versionCode)),
                 new HookSpec("AdHooks",
-                        () -> SettingHelper.getInstance().isAnyAdEnabled(),
+                        () -> portProfileMatches(versionCode)
+                                && SettingHelper.getInstance().isAnyAdEnabled(),
                         () -> AdHooks.install(context)),
                 new HookSpec("UiHooks",
-                        () -> SettingHelper.getInstance().getSetting(SettingHelper.ui_home_blocks_key)
+                        () -> portProfileMatches(versionCode)
+                                && (SettingHelper.getInstance().getSetting(SettingHelper.ui_home_blocks_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.ui_top_channels_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.ui_update_dialog_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.ui_startup_delay_key)
@@ -240,14 +255,15 @@ public class Hook {
                                 || SettingHelper.getInstance().getSetting(SettingHelper.ui_player_hints_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.ui_search_guide_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.ui_lyrics_hint_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_community_live_key),
+                                || SettingHelper.getInstance().getSetting(SettingHelper.ui_community_live_key)),
                         () -> UiHooks.install(context)),
                 new HookSpec("PrivacyHooks",
-                        () -> SettingHelper.getInstance().getSetting(SettingHelper.pv_oaid_key)
+                        () -> portProfileMatches(versionCode)
+                                && (SettingHelper.getInstance().getSetting(SettingHelper.pv_oaid_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.pv_log_tasks_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.pv_apm_key)
                                 || SettingHelper.getInstance().getSetting(SettingHelper.pv_stats_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.pv_clipboard_key),
+                                || SettingHelper.getInstance().getSetting(SettingHelper.pv_clipboard_key)),
                         () -> PrivacyHooks.install(context)));
     }
 
@@ -262,11 +278,12 @@ public class Hook {
                 new HookSpec("AdExtraHook", null, () -> new AdExtraHook(context)));
     }
 
-    private java.util.List<HookSpec> playSpecs(Context context) {
+    private java.util.List<HookSpec> playSpecs(Context context, int versionCode) {
         return java.util.Arrays.asList(
                 new HookSpec("play:ProxyHook", null, () -> new ProxyHook(context, true)),
                 new HookSpec("play:AdHooks",
-                        () -> SettingHelper.getInstance().getSetting(SettingHelper.ad_audio_clip_key),
+                        () -> portProfileMatches(versionCode)
+                                && SettingHelper.getInstance().getSetting(SettingHelper.ad_audio_clip_key),
                         () -> AdHooks.installPlayProcess(context)));
     }
 
