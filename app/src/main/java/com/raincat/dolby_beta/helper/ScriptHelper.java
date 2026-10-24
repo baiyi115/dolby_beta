@@ -60,7 +60,7 @@ public class ScriptHelper {
         boolean scriptChanged = !SCRIPT_ASSET_VERSION.equals(ExtraHelper.getExtraDate(ExtraHelper.SCRIPT_ASSET_VERSION))
                 || !(BuildConfig.VERSION_CODE + "").equals(ExtraHelper.getExtraDate(ExtraHelper.APP_VERSION));
         if (cover || !unblockFile.exists() || scriptChanged)
-            releaseScript(context);
+            releaseScript(context, cover);
 
         if (TextUtils.isEmpty(nodeLibPath)) {
             nodeLibPath = TextUtils.isEmpty(modulePath) ? "" : modulePath.substring(0, modulePath.lastIndexOf('/'));
@@ -76,7 +76,7 @@ public class ScriptHelper {
      * concurrent runs wrote the same .unm_script.tmp and unzipped into the same directory. A lock
      * file next to the script works because both processes run under the same uid.
      */
-    private static void releaseScript(Context context) {
+    private static void releaseScript(Context context, boolean cover) {
         synchronized (EXTRACT_LOCK) {
             RandomAccessFile lockFile = null;
             FileLock lock = null;
@@ -85,11 +85,16 @@ public class ScriptHelper {
                 if (!dir.exists() && !dir.mkdirs())
                     XposedCompat.logError("UNM script dir unavailable: " + dir);
                 lockFile = new RandomAccessFile(new File(dir, ".unm.lock"), "rw");
-                lock = lockFile.getChannel().tryLock();
+                lock = acquireCrossProcessLock(lockFile, 5000);
                 if (lock == null) {
-                    // Another process is extracting right now; it publishes the same asset version,
-                    // and a failure there is retried on the next start.
-                    XposedCompat.logInfo("UNM script extraction in progress in another process, skipping");
+                    // Another process held the lock for the whole timeout. It publishes the same
+                    // asset version; a failure there is retried on the next start.
+                    XposedCompat.logInfo("UNM script extraction still held by another process, skipping");
+                } else if (!cover && scriptIsCurrent()) {
+                    // The other process finished between our first check and the lock handover;
+                    // re-extracting now would be redundant. An explicit "release again" request
+                    // still forces a fresh extraction.
+                    XposedCompat.logInfo("UNM script already released by another process");
                 } else if (extractScript(context) && verifyScript()) {
                     Command auth = new Command(0, "cd " + getScriptPath(context), "chmod 0777 *");
                     Tools.shell(auth);
@@ -117,6 +122,44 @@ public class ScriptHelper {
                 }
             }
         }
+    }
+
+    /**
+     * tryLock() returns null while another process owns the lock, and throws
+     * OverlappingFileLockException when this JVM already holds it. Waiting briefly matters:
+     * without it the second process skipped extraction and started the proxy while the first was
+     * still unpacking, so app.js could be missing or truncated at that moment.
+     */
+    private static FileLock acquireCrossProcessLock(RandomAccessFile lockFile, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (true) {
+            try {
+                FileLock lock = lockFile.getChannel().tryLock();
+                if (lock != null)
+                    return lock;
+            } catch (java.nio.channels.OverlappingFileLockException e) {
+                // Busy in this JVM; EXTRACT_LOCK normally prevents it, so just retry.
+            } catch (Throwable t) {
+                XposedCompat.log("UNM script lock failed");
+                XposedCompat.log(t);
+                return null;
+            }
+            if (System.currentTimeMillis() >= deadline)
+                return null;
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+    }
+
+    /** True when the extracted files match the bundled asset and pass the sanity check. */
+    private static boolean scriptIsCurrent() {
+        return SCRIPT_ASSET_VERSION.equals(ExtraHelper.getExtraDate(ExtraHelper.SCRIPT_ASSET_VERSION))
+                && (BuildConfig.VERSION_CODE + "").equals(ExtraHelper.getExtraDate(ExtraHelper.APP_VERSION))
+                && verifyScript();
     }
 
     private static boolean extractScript(Context context) {
