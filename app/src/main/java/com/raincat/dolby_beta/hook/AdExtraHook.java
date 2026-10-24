@@ -14,7 +14,9 @@ import java.util.List;
 
 public class AdExtraHook {
     public AdExtraHook(Context context) {
-        if (SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key)) {
+        // Fallback path for ad objects; follow the ad sub-switches instead of the retired
+        // ad_remove_key, otherwise it kept running after every sub-switch was turned off.
+        if (SettingHelper.getInstance().isAnyAdEnabled()) {
             List<Method> methods = ClassHelper.Ad.getAdMethod(context);
             if (methods == null || methods.isEmpty()) {
                 // Previously a silent no-op, which looks exactly like "ad removal does not work".

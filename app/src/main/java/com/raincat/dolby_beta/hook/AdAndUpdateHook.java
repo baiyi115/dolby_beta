@@ -1,8 +1,6 @@
 package com.raincat.dolby_beta.hook;
 
-import android.app.Activity;
 import android.content.Context;
-import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -19,7 +17,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static com.raincat.dolby_beta.xposed.XposedCompat.findAndHookMethod;
 import static com.raincat.dolby_beta.xposed.XposedCompat.findClassIfExists;
 import static com.raincat.dolby_beta.xposed.XposedCompat.hookAllMethods;
 
@@ -51,7 +48,6 @@ public class AdAndUpdateHook {
 
         hookAdUrls(context);
         hookAdCards(context);
-        hookLoadingAd(context);
     }
 
     /**
@@ -76,10 +72,13 @@ public class AdAndUpdateHook {
         }
     }
 
-    /** Ad or upgrade endpoint. A NetEase CDN host is never treated as an ad host. */
-    private static boolean shouldBlock(String url) {
-        if (url.contains("android/version") || url.contains("android/upgrade"))
-            return true;
+    /** Upgrade endpoint: governed by the update-dialog switch, not the ad switches. */
+    private static boolean isUpdateUrl(String url) {
+        return url.contains("android/version") || url.contains("android/upgrade");
+    }
+
+    /** Ad endpoint. A NetEase CDN host is never treated as an ad host. */
+    private static boolean isAdUrl(String url) {
         if (url.contains("music.126.net"))
             return false;
         if (url.contains("resource-exposure/config") || url.contains("api/ad")
@@ -113,9 +112,13 @@ public class AdAndUpdateHook {
         hookAllMethods(okHttpClientClass, newCallMethodString, new MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                // Cheapest filter first: this fires once per HTTP request, and ad removal is
-                // commonly disabled, in which case nothing below should run at all.
-                if (!SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key))
+                // Cheapest filters first: this fires once per HTTP request.
+                // URL blocking is the shared fallback for every ad switch plus the update
+                // switch, so it must follow those switches instead of the retired ad_remove_key.
+                SettingHelper settings = SettingHelper.getInstance();
+                final boolean updateEnabled = settings.isUiEnabled(SettingHelper.ui_update_dialog_key);
+                final boolean anyAdEnabled = settings.isAnyAdEnabled();
+                if (!updateEnabled && !anyAdEnabled)
                     return;
                 if (param.args == null || param.args.length != 1
                         || !param.args[0].getClass().getName().contains("okhttp"))
@@ -125,7 +128,13 @@ public class AdAndUpdateHook {
                 if (httpUrl == null)
                     return;
                 Object urlObj = httpUrl.get(request);
-                if (urlObj == null || !shouldBlock(urlObj.toString()))
+                if (urlObj == null)
+                    return;
+                String url = urlObj.toString();
+                boolean block = isUpdateUrl(url)
+                        ? updateEnabled
+                        : anyAdEnabled && isAdUrl(url);
+                if (!block)
                     return;
                 Field target = urlField(urlObj.getClass(), urlFieldString);
                 if (target != null) {
@@ -183,7 +192,9 @@ public class AdAndUpdateHook {
     }
 
     private static void hideAdItem(Object holder, Field itemViewField, String className) {
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key))
+        // These holders belong to the recommend feed, so follow the feed switch rather than
+        // the retired ad_remove_key.
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.ad_feed_key))
             return;
         View itemView = itemView(holder, itemViewField);
         if (itemView == null)
@@ -233,30 +244,6 @@ public class AdAndUpdateHook {
             return value instanceof View ? (View) value : null;
         } catch (Throwable t) {
             return null;
-        }
-    }
-
-    private void hookLoadingAd(Context context) {
-        try {
-            if (!SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key)
-                    || findClassIfExists("com.netease.cloudmusic.activity.LoadingAdActivity",
-                    context.getClassLoader()) == null)
-                return;
-            findAndHookMethod("com.netease.cloudmusic.activity.LoadingAdActivity", context.getClassLoader(),
-                    "onCreate", Bundle.class, new MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            // Re-read the switch per call: the install-time check alone meant that
-                            // turning "去广告" off kept closing the ad activity until a restart.
-                            if (!SettingHelper.getInstance().isEnable(SettingHelper.ad_remove_key))
-                                return;
-                            Activity activity = (Activity) param.thisObject;
-                            if (!activity.isFinishing())
-                                activity.finish();
-                        }
-                    });
-        } catch (Throwable t) {
-            XposedCompat.noteHookFailed("AdHook#LoadingAd", t);
         }
     }
 }

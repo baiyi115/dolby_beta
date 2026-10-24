@@ -214,16 +214,7 @@ public class Hook {
                         }),
                 new HookSpec("AdAndUpdateHook", null, () -> new AdAndUpdateHook(context, versionCode)),
                 new HookSpec("AdHooks",
-                        () -> SettingHelper.getInstance().getSetting(SettingHelper.ad_splash_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_launch_dialog_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_report_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_search_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_preload_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_feed_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_comment_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_player_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_audio_clip_key)
-                                || SettingHelper.getInstance().getSetting(SettingHelper.ad_motivation_key),
+                        () -> SettingHelper.getInstance().isAnyAdEnabled(),
                         () -> AdHooks.install(context)),
                 new HookSpec("UiHooks",
                         () -> SettingHelper.getInstance().getSetting(SettingHelper.ui_home_blocks_key)

@@ -33,10 +33,14 @@ public final class AdHooks {
         if (s.isAdEnabled(SettingHelper.ad_preload_key)) {
             AdMiscHooks.installPreload(context);
         }
-        if (s.isAdEnabled(SettingHelper.ad_feed_key)) {
-            AdMiscHooks.installFeedAd(context);
+        // Banner.isAdBanner() gates both feed and comment ads; install it once even when both
+        // switches are on (previously it was wrapped twice).
+        final boolean feedAd = s.isAdEnabled(SettingHelper.ad_feed_key);
+        final boolean commentAd = s.isAdEnabled(SettingHelper.ad_comment_key);
+        if (feedAd || commentAd) {
+            AdMiscHooks.installBanner(context, feedAd ? "feedad" : "commentad");
         }
-        if (s.isAdEnabled(SettingHelper.ad_comment_key)) {
+        if (commentAd) {
             AdMiscHooks.installCommentAd(context);
         }
         if (s.isAdEnabled(SettingHelper.ad_player_key)) {

@@ -123,6 +123,13 @@ public class SettingHelper {
     public static final String ad_audio_clip_title = "音频贴片";
     public static final String ad_audio_clip_sub = "音频贴片、播客视频广告（含 :play 进程）";
 
+    /** 所有广告净化子项，供旧广告通路的兜底判断使用。 */
+    private static final String[] AD_KEYS = {
+            ad_splash_key, ad_launch_dialog_key, ad_report_key, ad_search_key,
+            ad_preload_key, ad_feed_key, ad_comment_key, ad_player_key,
+            ad_audio_clip_key, ad_motivation_key
+    };
+
     // UI simplification: rows on the existing beauty sub-page
 
     public static final String ui_home_blocks_key = "β_ui_home_blocks_key";
@@ -281,6 +288,20 @@ public class SettingHelper {
     /** 隐私保护子项是否启用。 */
     public boolean isPrivacyEnabled(String key) {
         return getSetting(master_key) && getSetting(key);
+    }
+
+    /**
+     * 旧广告通路（OkHttp URL 拦截、广告对象参数清空）的兜底条件。
+     * 任意子项开启即生效，全部关闭时彻底停用；细粒度拦截仍由各自的 hook 单独判断。
+     * 之前旧通路只认 ad_remove_key，而该开关已从设置界面移除，导致子项关闭后仍然被拦截。
+     */
+    public boolean isAnyAdEnabled() {
+        if (!getSetting(master_key))
+            return false;
+        for (String key : AD_KEYS)
+            if (getSetting(key))
+                return true;
+        return false;
     }
 
     public String getHomeBlocksFilter() {

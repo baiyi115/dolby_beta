@@ -118,14 +118,16 @@ public final class AdMiscHooks {
 
     // feed and comments
 
-    /** Banner.isAdBanner()Z is the single gate for feed and comment ads. */
-    public static void installFeedAd(Context context) {
-        hookBanner(context, "feedad");
+    /**
+     * Banner.isAdBanner()Z gates both feed and comment ads. It must be installed exactly once
+     * from {@link AdHooks}: installing it per feature wrapped the same method twice.
+     */
+    public static void installBanner(Context context, String tag) {
+        hookBanner(context, tag);
     }
 
     public static void installCommentAd(Context context) {
-        hookBanner(context, "commentad");
-
+        // Banner is shared with feed and installed once by AdHooks.installBanner().
         ClassLoader cl = context.getClassLoader();
         for (String name : new String[]{Profile9581.SPECIAL_COMMENT, Profile9581.COMMENT,
                 Profile9581.COMMENT_LIST_ENTRY}) {
