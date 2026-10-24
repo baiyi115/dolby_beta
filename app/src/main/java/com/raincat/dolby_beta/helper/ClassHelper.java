@@ -73,6 +73,10 @@ public class ClassHelper {
     }
 
     private static synchronized void getCacheClassByZip(Context context, int version, OnCacheClassListener listener) {
+        // Build into a local list and publish it with one reference write in finally. The scan
+        // thread used to append to the shared classCacheList while other threads streamed it,
+        // which could throw ConcurrentModificationException or expose a half-filled cache.
+        List<String> scanned = new ArrayList<>();
         try {
 
             File appInstallFile = new File(context.getPackageResourcePath());
@@ -86,7 +90,7 @@ public class ClassHelper {
                         String classType = classDef.getType();
                         if (classType.contains("com/netease/cloudmusic") || classType.contains("okhttp3")) {
                             classType = classType.substring(1, classType.length() - 1).replace("/", ".");
-                            classCacheList.add(classType);
+                            scanned.add(classType);
                         }
                     }
                 }
@@ -95,10 +99,11 @@ public class ClassHelper {
             XposedCompat.log("ClassHelper dex cache scan failed: " + e);
             XposedCompat.log(e);
         } finally {
-            FileHelper.writeFileFromSD(classCachePath + File.separator + "class-" + version, classCacheList);
+            classCacheList = scanned;
+            FileHelper.writeFileFromSD(classCachePath + File.separator + "class-" + version, scanned);
             listener.onGet();
             XposedCompat.logInfo("ClassHelper dex scan complete process=" + Tools.getCurrentProcessName(context)
-                    + " version=" + version + " count=" + classCacheList.size());
+                    + " version=" + version + " count=" + scanned.size());
         }
     }
 
